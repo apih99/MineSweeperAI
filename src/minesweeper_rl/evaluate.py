@@ -22,6 +22,17 @@ from minesweeper_rl.env.gym_env import MinesweeperEnv
 # must use different (non-overlapping) seeds.
 EVAL_SEED_BASE = 1_000_000
 
+# Agent RNG stream id. Gymnasium seeds its env RNG as Generator(PCG64(SeedSequence(seed))),
+# which is bit-identical to np.random.default_rng(seed). Seeding the agent with the plain
+# seed would hand it the same draws the env uses for mine placement, correlating the
+# agent's random clicks with mine locations. Mixing in this constant gives an independent stream.
+AGENT_STREAM = 0xA9E7
+
+
+def agent_rng(seed: int) -> np.random.Generator:
+    return np.random.default_rng([seed, AGENT_STREAM])
+
+
 # Registry of agent factories; a checkpoint-based DQN agent can be added here later.
 AGENTS: dict[str, Callable[[], Agent]] = {
     "random": RandomAgent,
@@ -56,7 +67,7 @@ def evaluate(
     for i in range(n_games):
         seed = seed_base + i
         obs, info = env.reset(seed=seed)
-        agent.reset(np.random.default_rng(seed))
+        agent.reset(agent_rng(seed))
         steps = 0
         while True:
             action = agent.act(obs, info["action_mask"])

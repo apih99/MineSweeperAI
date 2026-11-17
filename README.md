@@ -32,7 +32,7 @@ Raw JSON in [results/baselines/](results/baselines/).
 
 | Agent | Board | Win rate (95% CI) | Mean % safe revealed |
 |-------|-------|-------------------|----------------------|
-| random | 5x5 / 3 mines | 4.78% (4.38-5.22%) | 40.2% |
-| rule | 5x5 / 3 mines | 35.88% (34.95-36.83%) | 45.4% |
-| random | 9x9 / 10 mines | 0.00% (0.00-0.04%) | 45.8% |
-| rule | 9x9 / 10 mines | 55.48% (54.50-56.45%) | 65.6% |
+| random | 5x5 / 3 mines | 8.82% (8.28-9.39%) | 71.4% |
+| rule | 5x5 / 3 mines | 68.96% (68.05-69.86%) | 81.9% |
+| random | 9x9 / 10 mines | 0.00% (0.00-0.04%) | 56.1% |
+| rule | 9x9 / 10 mines | 68.11% (67.19-69.02%) | 79.3% |
