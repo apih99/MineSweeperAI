@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "minesweeper-rl"
+version = "0.1.0"
+description = "Reinforcement-learning agent that learns Minesweeper."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "numpy",
+    "torch",
+    "gymnasium",
+    "pyyaml",
+    "tensorboard",
+    "matplotlib",
+    "pillow",
+    "scipy",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
