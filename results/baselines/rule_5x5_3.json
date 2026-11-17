@@ -1,0 +1,15 @@
+{
+  "agent": "rule",
+  "board": "5x5",
+  "n_mines": 3,
+  "n_games": 10000,
+  "wins": 3588,
+  "win_rate": 0.3588,
+  "win_rate_ci95": [
+    0.34945476333310027,
+    0.36825368179062096
+  ],
+  "mean_safe_revealed_frac": 0.45425454545453875,
+  "mean_steps": 3.7302,
+  "seconds": 24.104711700012558
+}
