@@ -58,3 +58,18 @@ running, so numbers are noisy; best of 10 runs, process CPU time, env steps/sec 
 Speedup varies roughly 6-10x (random policy) and 5-30x (safe-peek) between runs on this machine.
 Remaining bottleneck: one `Generator.choice` per episode (~20 us, must stay bit-identical to the
 single env), which dominates when episodes are very short (random agent: ~3-4 clicks).
+
+## DQN (M4)
+
+Fully convolutional 5x(Conv3x3, 64 ch)+Conv1x1 Q-network, Double DQN with action masking in both
+acting and the target argmax. Train: `python -m minesweeper_rl.train --name dqn_5x5_3 --total-steps 400000 --eval-every 20000`;
+evaluate: `python -m minesweeper_rl.evaluate --agent dqn --checkpoint runs/dqn_5x5_3/best.pt --height 5 --width 5 --mines 3`.
+5x5/3 run: 400k board-steps (~23 min on a 2-core laptop CPU), `best.pt` picked by 500-game training evals
+(selection on seeds that overlap the first 500 of the 10k eval, so the 10k number is very slightly optimistic;
+`final.pt` scores 78.25%). Curve in [results/dqn/dqn_5x5_3_metrics.csv](results/dqn/dqn_5x5_3_metrics.csv).
+
+| Agent | Board | Win rate (95% CI) | Mean % safe revealed |
+|-------|-------|-------------------|----------------------|
+| random | 5x5 / 3 mines | 8.82% (8.28-9.39%) | 71.4% |
+| rule | 5x5 / 3 mines | 68.96% (68.05-69.86%) | 81.9% |
+| **DQN (best.pt)** | 5x5 / 3 mines | **79.93% (79.13-80.70%)** | 89.4% |

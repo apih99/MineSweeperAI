@@ -16,6 +16,7 @@ import numpy as np
 
 from minesweeper_rl.agents.base import Agent
 from minesweeper_rl.agents.baselines import RandomAgent, RuleAgent
+from minesweeper_rl.agents.dqn import DQNAgent
 from minesweeper_rl.env.gym_env import MinesweeperEnv
 
 # Reserved for evaluation: game i uses env seed EVAL_SEED_BASE + i. Training
@@ -33,10 +34,11 @@ def agent_rng(seed: int) -> np.random.Generator:
     return np.random.default_rng([seed, AGENT_STREAM])
 
 
-# Registry of agent factories; a checkpoint-based DQN agent can be added here later.
-AGENTS: dict[str, Callable[[], Agent]] = {
+# Registry of agent factories. "dqn" additionally needs ``checkpoint=<path>``.
+AGENTS: dict[str, Callable[..., Agent]] = {
     "random": RandomAgent,
     "rule": RuleAgent,
+    "dqn": DQNAgent,
 }
 
 
@@ -105,8 +107,15 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--mines", type=int, default=10)
     p.add_argument("--games", type=int, default=10_000)
     p.add_argument("--out", type=str, default=None)
+    p.add_argument("--checkpoint", type=str, default=None, help="model .pt (required for --agent dqn)")
     a = p.parse_args(argv)
-    res = evaluate(AGENTS[a.agent](), a.height, a.width, a.mines, a.games)
+    if a.agent == "dqn":
+        if not a.checkpoint:
+            p.error("--agent dqn requires --checkpoint")
+        agent = AGENTS["dqn"](checkpoint=a.checkpoint)
+    else:
+        agent = AGENTS[a.agent]()
+    res = evaluate(agent,a.height, a.width, a.mines, a.games)
     lo, hi = res["win_rate_ci95"]
     print(f"agent={res['agent']} board={res['board']} mines={res['n_mines']} games={res['n_games']}")
     print(f"  win rate      : {100 * res['win_rate']:.2f}%  (95% CI {100 * lo:.2f}-{100 * hi:.2f}%)")
