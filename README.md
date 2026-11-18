@@ -36,3 +36,25 @@ Raw JSON in [results/baselines/](results/baselines/).
 | rule | 5x5 / 3 mines | 68.96% (68.05-69.86%) | 81.9% |
 | random | 9x9 / 10 mines | 0.00% (0.00-0.04%) | 56.1% |
 | rule | 9x9 / 10 mines | 68.11% (67.19-69.02%) | 79.3% |
+
+## Batched environment
+
+`minesweeper_rl.env.batched.BatchedMinesweeperEnv(n_envs, h, w, n_mines)` steps N independent
+boards with NumPy array ops (same rewards/termination/truncation as `MinesweeperEnv`; finished
+boards auto-reset in the same step, terminal data in `info["final_obs"]` / `info["final_mask"]`).
+Board `i` owns its own `Generator` (`seeding.np_random(seeds[i])`), used only for its mine
+placement, so a batched run is bit-for-bit identical to N single envs seeded the same way
+(`tests/test_batched.py`). Flood fill labels zero-count regions once at mine placement
+(`scipy.ndimage.label`, 8-connectivity) and reveals component + border by dilation.
+
+Benchmark (`python scripts/bench_env.py`, 9x9/10 mines, i7-6600U laptop with other programs
+running, so numbers are noisy; best of 10 runs, process CPU time, env steps/sec only):
+
+| Policy | single | N=64 | N=128 | N=256 |
+|--------|--------|------|-------|-------|
+| random legal cell | 10.0k | 83.6k (8.4x) | 60.2k (6.0x) | 81.9k (8.2x) |
+| safe-peek (long episodes) | 15.7k | 116.9k (7.4x) | 157.2k (10.0x) | 85.3k (5.4x) |
+
+Speedup varies roughly 6-10x (random policy) and 5-30x (safe-peek) between runs on this machine.
+Remaining bottleneck: one `Generator.choice` per episode (~20 us, must stay bit-identical to the
+single env), which dominates when episodes are very short (random agent: ~3-4 clicks).
