@@ -13,10 +13,11 @@ n_envs: 256
 # the 5x5 run's replay ratio (updates * batch / transitions ~ 1). It is a lower bound on what a
 # 12 h session can do; extend later with: --resume RUN --set total_steps=40000000
 total_steps: 20000000
-# Wider/deeper than 5x5: 8 conv layers give a 17x17 receptive field, i.e. every cell can see the
-# whole 9x9 board; 128 channels because the GPU makes width cheap.
-channels: 128
-n_layers: 8
+# Network per PLAN.md (Q9): 5 x 3x3 conv, 64 channels -> 11x11 receptive field, ample for
+# Minesweeper's local deductions. Kept identical across 5x5/9x9/16x16 so the 9x9 model transfers
+# to 16x16 unchanged (stretch goal). A wider/deeper net is an M8 experiment, not the baseline.
+channels: 64
+n_layers: 5
 # 500k transitions ~ 2.5% of the run, ~130 MB of RAM (~100 MB on disk in replay-*.npz).
 # Big enough that early random-policy data ages out, small enough to checkpoint quickly.
 buffer_size: 500000

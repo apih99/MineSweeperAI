@@ -6,8 +6,9 @@ width: 16
 n_mines: 40
 n_envs: 256
 total_steps: 50000000    # 195k batched steps; boards are 3x bigger and games ~3x longer than 9x9
-channels: 128
-n_layers: 12             # receptive field 25x25 covers the whole board
+# Same net as 5x5/9x9 (PLAN.md Q9) so 9x9 weights can be loaded / fine-tuned here.
+channels: 64
+n_layers: 5
 buffer_size: 400000      # ~310 MB RAM (781 B/transition), ~220 MB on disk
 batch_size: 256
 learning_starts: 50000
