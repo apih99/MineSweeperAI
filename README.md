@@ -2,7 +2,7 @@
 
 A reinforcement-learning agent (Double DQN, fully convolutional) that learns to play Minesweeper.
 
-> Work in progress. See [PLAN.md](PLAN.md) for the design and milestones.
+> Work in progress. 9x9/10-mine agent: 86.6% win rate vs. 68.1% for the rule solver (see [9x9 results](#9x9-on-a-kaggle-gpu-m6)). See [PLAN.md](PLAN.md) for the design and milestones.
 
 ## Setup (Windows PowerShell)
 
@@ -113,3 +113,48 @@ tensorboard --logdir runs
 * Checkpoint sizes: 5x5 (100k buffer) `latest.pt` ~2.6 MB + replay ~6.7 MB; 9x9 config
   `latest.pt` ~14 MB + replay ~93 MB; 16x16 config ~23 MB + ~223 MB (replay is saved
   uncompressed, ~0.4-0.9 s; `np.savez_compressed` would be ~8x smaller but ~5-10 s).
+
+## 9x9 on a Kaggle GPU (M6)
+
+`configs/9x9.yaml` (same 5x64 network as 5x5, 256 boards per batched step, 20M board-steps) was trained
+on a free Kaggle Tesla T4 with [kaggle/run_kaggle.py](kaggle/run_kaggle.py), driven locally by
+[scripts/kaggle_run.py](scripts/kaggle_run.py):
+
+```powershell
+git push origin main                                    # the kernel clones GitHub at a pinned commit
+python scripts/kaggle_run.py push --accelerator NvidiaTeslaT4            # fresh run of configs/9x9.yaml
+python scripts/kaggle_run.py push --resume --accelerator NvidiaTeslaT4   # next session: resume latest.pt
+python scripts/kaggle_run.py wait                       # poll status
+python scripts/kaggle_run.py output --version v1        # -> runs/kaggle/v1/ (gitignored)
+```
+
+The kernel prints `nvidia-smi`, refuses to run without CUDA, clones the repo at the pinned SHA, installs the
+package with `--no-deps` (Kaggle's CUDA torch is kept; Python 3.13 needs `--ignore-requires-python`), runs
+`pytest -m "not slow"`, trains with `max_wall_minutes=690` (clean save before the 12 h session limit), then
+evaluates `best.pt`/`final.pt` on 10k standard and 10k unseen seeds. `--resume` attaches the kernel's own
+previous version as an input (`kernel_sources`); the run directory found there is copied and resumed.
+
+Throughput on the T4 (4 CPU cores): ~9.1k board-steps/s and ~36 updates/s, i.e. the 20M-step run took
+37 minutes. The NumPy environment on the CPU, not the GPU, is the bottleneck.
+
+Win rate over 10,000 games (95% Wilson CI). "Standard" = seeds 1,000,000-1,009,999; "unseen" = seeds
+5,000,000-5,009,999 (never used for training, model selection or the learning-curve evals).
+`best.pt` is the checkpoint with the best 1,000-game training-time eval (selected on seeds that overlap
+the standard range, so only the unseen column is free of selection bias). Raw JSON in
+[results/](results/), curve in [results/dqn/dqn_9x9_10_metrics.csv](results/dqn/dqn_9x9_10_metrics.csv),
+weights in [models/dqn_9x9_10.pt](models/dqn_9x9_10.pt).
+
+| Agent | Board | Standard seeds | Unseen seeds |
+|-------|-------|----------------|--------------|
+| random | 5x5 / 3 mines | 8.82% (8.28-9.39%) | - |
+| rule | 5x5 / 3 mines | 68.96% (68.05-69.86%) | - |
+| **DQN (best.pt)** | 5x5 / 3 mines | **79.93% (79.13-80.70%)** | - |
+| random | 9x9 / 10 mines | 0.00% (0.00-0.04%) | 0.01% (0.00-0.06%) |
+| rule | 9x9 / 10 mines | 68.11% (67.19-69.02%) | 68.06% (67.14-68.97%) |
+| **DQN (best.pt)** | 9x9 / 10 mines | **86.55% (85.87-87.20%)** | **87.57% (86.91-88.20%)** |
+| DQN (final.pt, 20M steps) | 9x9 / 10 mines | 79.50% (78.70-80.28%) | 80.05% (79.26-80.82%) |
+
+Caveat: the 1,000-game training evals of consecutive checkpoints swing between ~74% and ~87% late in the
+run (constant learning rate, no averaging), so `final.pt` is a noisier draw than `best.pt`; the unseen-seed
+number for `best.pt` is the honest estimate of that checkpoint's strength, but picking the best of 40
+noisy evals still favours lucky checkpoints a little.
