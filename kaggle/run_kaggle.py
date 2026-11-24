@@ -85,6 +85,7 @@ out = subprocess.check_output([sys.executable, "-c", "import torch;print(torch._
                               text=True).strip()
 print("torch after install:", out)
 assert out == f"{torch.__version__} True", "torch was replaced or lost CUDA"
+sys.path.insert(0, str(REPO / "src"))  # the editable install happened after this interpreter started
 
 # ----------------------------------------------------------------------------- 4. sanity tests
 banner("4. pytest -m 'not slow'")
