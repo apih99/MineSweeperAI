@@ -77,15 +77,37 @@ class ReplayBuffer:
         self.pos = (self.pos + n) % self.capacity
         self.size = min(self.size + n, self.capacity)
 
-    def sample(self, batch_size: int) -> Batch:
+    def to_arrays(self) -> dict[str, np.ndarray]:
+        """Contents as plain arrays (only the filled rows; the bool mask is bit-packed)."""
+        n = self.size
+        return {
+            "state": self.state[:n], "next_state": self.next_state[:n], "action": self.action[:n],
+            "reward": self.reward[:n], "done": self.done[:n],
+            "next_mask": np.packbits(self.next_mask[:n], axis=1),
+            "pos": np.array(self.pos, np.int64), "size": np.array(n, np.int64),
+            "capacity": np.array(self.capacity, np.int64),
+        }
+
+    def load_arrays(self, d) -> None:
+        n, cap = int(d["size"]), int(d["capacity"])
+        if cap != self.capacity or self.state.shape[1:] != d["state"].shape[1:]:
+            raise ValueError("replay file does not match this buffer's capacity/board size")
+        self.state[:n], self.next_state[:n] = d["state"], d["next_state"]
+        self.action[:n], self.reward[:n], self.done[:n] = d["action"], d["reward"], d["done"]
+        self.next_mask[:n] = np.unpackbits(d["next_mask"], axis=1, count=self.next_mask.shape[1]).astype(bool)
+        self.pos, self.size = int(d["pos"]), n
+
+    def sample(self, batch_size: int, device: torch.device | str | None = None) -> Batch:
+        """Uniform minibatch (sampling is NumPy; tensors are moved to ``device`` per batch)."""
         i = self.rng.integers(0, self.size, size=batch_size)
+        t = lambda x: torch.from_numpy(x).to(device)  # noqa: E731
         return Batch(
-            codes_to_onehot(torch.from_numpy(self.state[i])),
-            torch.from_numpy(self.action[i]),
-            torch.from_numpy(self.reward[i]),
-            codes_to_onehot(torch.from_numpy(self.next_state[i])),
-            torch.from_numpy(self.next_mask[i]),
-            torch.from_numpy(self.done[i]),
+            codes_to_onehot(t(self.state[i])),
+            t(self.action[i]),
+            t(self.reward[i]),
+            codes_to_onehot(t(self.next_state[i])),
+            t(self.next_mask[i]),
+            t(self.done[i]),
         )
 
 
@@ -117,8 +139,10 @@ def epsilon_greedy_actions(
 ) -> np.ndarray:
     """Batch epsilon-greedy over legal cells. obs (N,10,H,W), mask (N,HW) bool."""
     n = mask.shape[0]
+    dev = next(q_net.parameters()).device
     with torch.no_grad():
-        greedy = masked_argmax(q_net(torch.from_numpy(obs)), torch.from_numpy(mask)).numpy()
+        greedy = masked_argmax(q_net(torch.from_numpy(obs).to(dev)), torch.from_numpy(mask).to(dev))
+        greedy = greedy.cpu().numpy()
     scores = np.where(mask, rng.random(mask.shape), -1.0)
     random_a = scores.argmax(axis=1)
     explore = rng.random(n) < eps
@@ -140,7 +164,9 @@ class DQNAgent(Agent):
         if net is None:
             if checkpoint is None:
                 raise ValueError("DQNAgent needs a net or a checkpoint path")
-            ck = torch.load(checkpoint, map_location="cpu", weights_only=False)
+            # weights_only=True: checkpoints hold only tensors and plain Python types. This also
+            # reads M4 best.pt/final.pt (state_dict + net + plain-dict config) and latest.pt.
+            ck = torch.load(checkpoint, map_location="cpu", weights_only=True)
             net = QNetwork(**ck["net"])
             net.load_state_dict(ck["state_dict"])
         self.net = net
@@ -151,6 +177,8 @@ class DQNAgent(Agent):
         return cls(checkpoint=path)
 
     def act(self, obs: np.ndarray, mask: np.ndarray) -> int:
+        dev = next(self.net.parameters()).device
         with torch.no_grad():
-            q = self.net(torch.from_numpy(np.ascontiguousarray(obs, dtype=np.float32))[None])
-            return int(masked_argmax(q, torch.from_numpy(np.asarray(mask, bool))[None])[0])
+            x = torch.from_numpy(np.ascontiguousarray(obs, dtype=np.float32))[None].to(dev)
+            m = torch.from_numpy(np.asarray(mask, bool))[None].to(dev)
+            return int(masked_argmax(self.net(x), m)[0])

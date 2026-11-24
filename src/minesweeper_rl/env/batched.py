@@ -109,6 +109,38 @@ class BatchedMinesweeperEnv:
         region = zl == lab[:, None, None]
         self.revealed[idx] |= _box3(region)
 
+    # ---- full-state snapshot (for exact checkpoint/resume) ----------------
+    _STATE_ARRAYS = ("mines", "revealed", "counts", "zero_labels", "mines_placed", "steps", "_obs_state")
+
+    def current(self):
+        """(obs, action_mask) of the boards as they stand now (same as the last step's output)."""
+        N = self.n_envs
+        return self._obs_state.reshape(N, 10, self.height, self.width).copy(), self._mask()
+
+    def get_state(self) -> dict:
+        """Everything needed to continue bit-exactly: all arrays + every board's Generator state."""
+        if self._rngs is None:
+            raise RuntimeError("call reset() before get_state()")
+        st = {k: getattr(self, k).copy() for k in self._STATE_ARRAYS}
+        st["rng_states"] = [r.bit_generator.state for r in self._rngs]
+        return st
+
+    def set_state(self, st: dict) -> None:
+        for k in self._STATE_ARRAYS:
+            arr = getattr(self, k)
+            new = np.asarray(st[k])
+            if new.shape != arr.shape or new.dtype != arr.dtype:
+                raise ValueError(f"env state '{k}' mismatch: {new.shape}/{new.dtype} vs {arr.shape}/{arr.dtype}")
+            arr[...] = new
+        if len(st["rng_states"]) != self.n_envs:
+            raise ValueError("env state has the wrong number of board generators")
+        rngs = []
+        for s in st["rng_states"]:
+            g = np.random.Generator(np.random.PCG64())
+            g.bit_generator.state = s
+            rngs.append(g)
+        self._rngs = rngs
+
     # ---- gym-like API -----------------------------------------------
     def reset(self, seeds: Sequence[int] | int | None = None):
         """Reset all boards. ``seeds``: int s -> s, s+1, ...; sequence -> one per board;

@@ -62,8 +62,9 @@ single env), which dominates when episodes are very short (random agent: ~3-4 cl
 ## DQN (M4)
 
 Fully convolutional 5x(Conv3x3, 64 ch)+Conv1x1 Q-network, Double DQN with action masking in both
-acting and the target argmax. Train: `python -m minesweeper_rl.train --name dqn_5x5_3 --total-steps 400000 --eval-every 20000`;
-evaluate: `python -m minesweeper_rl.evaluate --agent dqn --checkpoint runs/dqn_5x5_3/best.pt --height 5 --width 5 --mines 3`.
+acting and the target argmax. Train: `python -m minesweeper_rl.train --config configs/5x5.yaml` (the M4 hyperparameters; see [Training](#training-resume-and-tensorboard-m5));
+evaluate: `python -m minesweeper_rl.evaluate --agent dqn --checkpoint runs/dqn_5x5_3/best.pt --height 5 --width 5 --mines 3`
+(batched evaluation: 10,000 greedy 5x5 games in ~22 s on the laptop CPU vs ~45 s one board at a time, with identical results; the CPU gain is only ~2x because the network forward pass dominates, on a GPU it is far larger).
 5x5/3 run: 400k board-steps (~23 min on a 2-core laptop CPU), `best.pt` picked by 500-game training evals
 (selection on seeds that overlap the first 500 of the 10k eval, so the 10k number is very slightly optimistic;
 `final.pt` scores 78.25%). Curve in [results/dqn/dqn_5x5_3_metrics.csv](results/dqn/dqn_5x5_3_metrics.csv).
@@ -73,3 +74,42 @@ evaluate: `python -m minesweeper_rl.evaluate --agent dqn --checkpoint runs/dqn_5
 | random | 5x5 / 3 mines | 8.82% (8.28-9.39%) | 71.4% |
 | rule | 5x5 / 3 mines | 68.96% (68.05-69.86%) | 81.9% |
 | **DQN (best.pt)** | 5x5 / 3 mines | **79.93% (79.13-80.70%)** | 89.4% |
+
+## Training, resume and TensorBoard (M5)
+
+```powershell
+python -m minesweeper_rl.train --config configs/5x5.yaml                    # -> runs/dqn_5x5_3/
+python -m minesweeper_rl.train --config configs/9x9.yaml --run-dir runs/a --set seed=1 --set lr=1e-4
+python -m minesweeper_rl.train --resume runs/a                              # continue from runs/a/latest.pt
+python -m minesweeper_rl.train --resume runs/a --set total_steps=40000000   # ...and extend the run
+tensorboard --logdir runs
+```
+
+* Configs in [configs/](configs/) (`5x5`, `9x9`, `16x16`) list only what differs from the `TrainConfig`
+  defaults (`5x5.yaml` lists everything: it is the M4 run). Unknown keys, bad types and typos in
+  `--set` are errors. `device: auto|cpu|cuda` (auto = cuda if available), `torch_threads`.
+* Each run directory holds `config.yaml` (resolved), `meta.json` (git commit + dirty flag, seed,
+  start time, torch/numpy versions, device), `metrics.csv`, TensorBoard events, `best.pt`
+  (best eval win rate), `final.pt`, and the resume state `latest.pt` + `replay-<steps>.npz`.
+* Logged every `eval_every` board-steps (CSV row and TensorBoard): `train/loss` and `train/mean_q`
+  (averaged over the interval), `train/epsilon`, `train/episode_return`, `train/episode_length`,
+  `train/win_rate` (training episodes, with exploration), `eval/win_rate` (+ Wilson CI low/high),
+  `perf/board_steps_per_s`, `perf/updates_per_s`.
+* `latest.pt` is written every `checkpoint_every_minutes` (default 10), at the end, and on
+  Ctrl-C/SIGTERM. It holds everything needed to continue **bit-for-bit**: both nets, Adam state,
+  counters, all RNG states (exploration, replay, torch CPU/CUDA, every training board's generator),
+  the full batched-env state and the logging accumulators; the replay buffer is the sibling
+  `replay-<board_steps>.npz` that `latest.pt` names. Files are written to a temp file and
+  `os.replace`d, replay first, so a kill at any moment (even mid-save) leaves the previous
+  consistent pair; `metrics.csv` and the TensorBoard curve (`purge_step`) are rewound to the
+  checkpoint, so resumed runs have no duplicate or missing rows. All `.pt` files load with
+  `torch.load(..., weights_only=True)`.
+* On `--resume` only `total_steps`, `eval_every`, `eval_games`, `checkpoint_every_minutes`,
+  `verbose`, `torch_threads`, `device` may change (board size, net shape, seeds, ... are rejected).
+  Note `total_steps` also stretches the epsilon schedule (decay is `eps_decay_frac * total_steps`).
+* Exact-resume is tested on CPU (`tests/test_train_resume.py`: train 2k steps straight vs. 1k +
+  fresh-process resume to 2k -> identical weights, optimizer state, replay, RNG states, CSV rows).
+  Resuming on a different device or torch version is not guaranteed bit-identical.
+* Checkpoint sizes: 5x5 (100k buffer) `latest.pt` ~2.6 MB + replay ~6.7 MB; 9x9 config
+  `latest.pt` ~14 MB + replay ~93 MB; 16x16 config ~23 MB + ~223 MB (replay is saved
+  uncompressed, ~0.4-0.9 s; `np.savez_compressed` would be ~8x smaller but ~5-10 s).

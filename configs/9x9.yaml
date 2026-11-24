@@ -1,0 +1,29 @@
+# 9x9 / 10 mines (beginner) -- starting point for one Kaggle GPU session (12 h limit).
+# Only keys that differ from the TrainConfig defaults are listed. These are UNTESTED guesses scaled
+# from the 5x5 run; expect to tune after the first look at the TensorBoard curves.
+name: dqn_9x9_10
+height: 9
+width: 9
+n_mines: 10
+
+# Throughput: 256 boards per batched step amortizes the GPU forward pass and the per-board Python
+# overhead of the NumPy env (which stays on the CPU and is the likely bottleneck).
+n_envs: 256
+# 20M board-steps = ~78k batched steps = ~78k gradient updates at updates_per_step=1. This keeps
+# the 5x5 run's replay ratio (updates * batch / transitions ~ 1). It is a lower bound on what a
+# 12 h session can do; extend later with: --resume RUN --set total_steps=40000000
+total_steps: 20000000
+# Wider/deeper than 5x5: 8 conv layers give a 17x17 receptive field, i.e. every cell can see the
+# whole 9x9 board; 128 channels because the GPU makes width cheap.
+channels: 128
+n_layers: 8
+# 500k transitions ~ 2.5% of the run, ~130 MB of RAM (~100 MB on disk in replay-*.npz).
+# Big enough that early random-policy data ages out, small enough to checkpoint quickly.
+buffer_size: 500000
+batch_size: 256          # matches n_envs; lr kept at the 5x5 value
+learning_starts: 25000   # ~100 batched steps of data before the first update
+target_update_every: 1000
+eps_decay_frac: 0.25     # epsilon 1 -> 0.01 over the first 5M board-steps
+eval_every: 500000       # 40 evals over the run; each is 1000 batched greedy games (seconds on GPU)
+eval_games: 1000         # CI half-width ~ +-2.5 points at 70% win rate
+checkpoint_every_minutes: 10

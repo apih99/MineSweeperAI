@@ -13,10 +13,13 @@ from pathlib import Path
 from typing import Callable
 
 import numpy as np
+import torch
 
 from minesweeper_rl.agents.base import Agent
 from minesweeper_rl.agents.baselines import RandomAgent, RuleAgent
 from minesweeper_rl.agents.dqn import DQNAgent
+from minesweeper_rl.agents.network import masked_argmax
+from minesweeper_rl.env.batched import BatchedMinesweeperEnv
 from minesweeper_rl.env.gym_env import MinesweeperEnv
 
 # Reserved for evaluation: game i uses env seed EVAL_SEED_BASE + i. Training
@@ -99,6 +102,70 @@ def evaluate(
     }
 
 
+def evaluate_batched(
+    net_or_agent,
+    height: int,
+    width: int,
+    n_mines: int,
+    n_games: int,
+    seed_base: int = EVAL_SEED_BASE,
+    batch: int = 256,
+) -> dict:
+    """Greedy, masked evaluation of a Q-network on many boards at once.
+
+    Same result as ``evaluate(DQNAgent(net), ...)``: game ``i`` is played on the board that
+    ``MinesweeperEnv.reset(seed=seed_base + i)`` would produce (each board's generator is
+    seeded with ``seed_base + i`` and its mines are placed on the first click). Games run in
+    chunks of ``batch``; a board's first finish is recorded and its later auto-reset games
+    (unseeded continuation) are ignored. The policy uses no randomness.
+    """
+    net = getattr(net_or_agent, "net", net_or_agent)
+    dev = next(net.parameters()).device
+    n_safe = height * width - n_mines
+    hw = height * width
+    env = BatchedMinesweeperEnv(max(1, min(batch, n_games)), height, width, n_mines)
+    B = env.n_envs
+    wins = steps_sum = 0
+    frac_sum = 0.0
+    t0 = time.perf_counter()
+    for c0 in range(0, n_games, B):
+        k = min(B, n_games - c0)
+        # padding boards (j >= k) get unused seeds past the end of the range; their results are ignored
+        obs, info = env.reset(seeds=[seed_base + c0 + j for j in range(B)])
+        mask = info["action_mask"]
+        alive = np.arange(B) < k
+        nsteps = np.zeros(B, dtype=np.int64)
+        while alive.any():
+            with torch.no_grad():
+                q = net(torch.from_numpy(obs).to(dev))
+                a = masked_argmax(q, torch.from_numpy(mask).to(dev)).cpu().numpy()
+            obs, _, _, _, info = env.step(a)
+            mask = info["action_mask"]
+            nsteps += alive
+            fin = np.flatnonzero(info["episode_done"] & alive)
+            if len(fin):
+                won = info["won"][fin]
+                revealed = hw - info["final_obs"][fin, 0].reshape(len(fin), hw).sum(axis=1)  # channel 0 = hidden
+                safe_revealed = revealed.astype(np.int64) - np.where(won, 0, 1)
+                wins += int(won.sum())
+                frac_sum += float((safe_revealed / n_safe).sum())
+                steps_sum += int(nsteps[fin].sum())
+                alive[fin] = False
+    seconds = time.perf_counter() - t0
+    return {
+        "agent": getattr(net_or_agent, "name", "dqn"),
+        "board": f"{height}x{width}",
+        "n_mines": n_mines,
+        "n_games": n_games,
+        "wins": wins,
+        "win_rate": wins / n_games,
+        "win_rate_ci95": wilson_interval(wins, n_games),
+        "mean_safe_revealed_frac": frac_sum / n_games,
+        "mean_steps": steps_sum / n_games,
+        "seconds": seconds,
+    }
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--agent", choices=sorted(AGENTS), required=True)
@@ -113,9 +180,10 @@ def main(argv: list[str] | None = None) -> None:
         if not a.checkpoint:
             p.error("--agent dqn requires --checkpoint")
         agent = AGENTS["dqn"](checkpoint=a.checkpoint)
+        res = evaluate_batched(agent, a.height, a.width, a.mines, a.games)  # same numbers as evaluate(), much faster
     else:
         agent = AGENTS[a.agent]()
-    res = evaluate(agent,a.height, a.width, a.mines, a.games)
+        res = evaluate(agent, a.height, a.width, a.mines, a.games)
     lo, hi = res["win_rate_ci95"]
     print(f"agent={res['agent']} board={res['board']} mines={res['n_mines']} games={res['n_games']}")
     print(f"  win rate      : {100 * res['win_rate']:.2f}%  (95% CI {100 * lo:.2f}-{100 * hi:.2f}%)")

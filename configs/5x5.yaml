@@ -1,0 +1,30 @@
+# 5x5 / 3 mines -- reproduces the M4 run (runs/dqn_5x5_3, 79.93% on 10k eval games) exactly.
+# Every key equals the TrainConfig default except total_steps and eval_every (the M4 CLI flags).
+# Listed in full so the file documents the run on its own.
+name: dqn_5x5_3
+height: 5
+width: 5
+n_mines: 3
+seed: 0
+train_seed_base: 0
+n_envs: 64
+total_steps: 400000      # board-steps (64 boards per batched step) ~ 6.25k gradient updates; ~23 min on 2 CPU cores
+channels: 64
+n_layers: 5
+buffer_size: 100000
+batch_size: 64
+lr: 0.0003
+gamma: 0.1
+grad_clip: 10.0
+train_every: 1
+updates_per_step: 1
+learning_starts: 5000
+target_update_every: 1000
+eps_start: 1.0
+eps_end: 0.01
+eps_decay_frac: 0.25
+eval_every: 20000        # also the logging interval (one metrics.csv / TensorBoard point per eval)
+eval_games: 500
+device: auto
+torch_threads: 2
+checkpoint_every_minutes: 10

@@ -1,0 +1,18 @@
+# 16x16 / 40 mines (intermediate) -- starting point for a Kaggle GPU session. UNTESTED guesses scaled
+# from the 9x9 config; see 9x9.yaml for the reasoning behind each knob.
+name: dqn_16x16_40
+height: 16
+width: 16
+n_mines: 40
+n_envs: 256
+total_steps: 50000000    # 195k batched steps; boards are 3x bigger and games ~3x longer than 9x9
+channels: 128
+n_layers: 12             # receptive field 25x25 covers the whole board
+buffer_size: 400000      # ~310 MB RAM (781 B/transition), ~220 MB on disk
+batch_size: 256
+learning_starts: 50000
+target_update_every: 1000
+eps_decay_frac: 0.2
+eval_every: 1000000
+eval_games: 1000
+checkpoint_every_minutes: 10
