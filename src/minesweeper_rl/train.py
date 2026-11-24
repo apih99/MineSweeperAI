@@ -94,6 +94,7 @@ class TrainConfig:
     device: str = "auto"  # auto | cpu | cuda
     torch_threads: int = 2
     checkpoint_every_minutes: float = 10.0  # latest.pt cadence; 0 = only at end/interrupt
+    max_wall_minutes: float | None = None  # stop cleanly (save latest.pt) after this much wall time in THIS process
     out_dir: str = "runs"
     verbose: bool = True
 
@@ -102,7 +103,8 @@ class TrainConfig:
 # board size or net shape). NOTE: total_steps also moves the epsilon schedule (it decays over
 # eps_decay_frac * total_steps), so extending a run changes epsilon from the resume point on.
 SAFE_RESUME_KEYS = frozenset(
-    {"total_steps", "eval_every", "eval_games", "checkpoint_every_minutes", "verbose", "torch_threads", "device"}
+    {"total_steps", "eval_every", "eval_games", "checkpoint_every_minutes", "verbose", "torch_threads", "device",
+     "max_wall_minutes"}
 )
 
 CSV_COLUMNS = [
@@ -130,6 +132,11 @@ def config_from_dict(d: dict | None) -> TrainConfig:
         raise ValueError(f"unknown config key(s): {', '.join(unknown)}; valid keys: {', '.join(fields)}")
     default = TrainConfig()
     for k, v in d.items():
+        if k == "max_wall_minutes":  # Optional[float]: None (no limit) or a positive number
+            if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0):
+                raise ValueError(f"config key 'max_wall_minutes' must be null or a positive number, got {v!r}")
+            d[k] = None if v is None else float(v)
+            continue
         want = type(getattr(default, k))
         if want in (int, float) and isinstance(v, str):  # YAML 1.1 reads "1e-3" as a string
             try:
@@ -433,11 +440,17 @@ def train(cfg: TrainConfig, run_dir: str | Path | None = None, resume: bool = Fa
     ckpt_s = cfg.checkpoint_every_minutes * 60.0
     last_ckpt = time.perf_counter()
     interrupted = False
+    wall_limit_s = None if cfg.max_wall_minutes is None else cfg.max_wall_minutes * 60.0
+    t_proc = time.perf_counter()  # wall limit counts this process only (a resumed run gets a fresh budget)
+    wall_stopped = False
     try:
         with _StopFlag() as flag:
             while board_steps < stop:
                 if flag.stop:
                     interrupted = True
+                    break
+                if wall_limit_s is not None and time.perf_counter() - t_proc >= wall_limit_s:
+                    interrupted = wall_stopped = True
                     break
                 eps = epsilon_at(cfg, board_steps)
                 a = epsilon_greedy_actions(online, obs, mask, eps, explore_rng)
@@ -493,7 +506,10 @@ def train(cfg: TrainConfig, run_dir: str | Path | None = None, resume: bool = Fa
     save_latest()
     csv_f.close()
     tb.close()
-    if cfg.verbose and interrupted:
+    if cfg.verbose and wall_stopped:
+        print(f"max_wall_minutes={cfg.max_wall_minutes} reached at {board_steps} board-steps; saved "
+              f"{run_dir / 'latest.pt'} (resume with --resume {run_dir})", flush=True)
+    elif cfg.verbose and interrupted:
         print(f"interrupted at {board_steps} board-steps; saved {run_dir / 'latest.pt'}", flush=True)
     return {"run_dir": str(run_dir), "best_win_rate": best, "history": history, "online": online,
             "board_steps": board_steps, "interrupted": interrupted, "finished": finished}

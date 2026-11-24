@@ -311,3 +311,18 @@ def test_cli_train_and_resume(tmp_path):
     r = subprocess.run([sys.executable, "-m", "minesweeper_rl.train", "--config", str(CONFIGS / "5x5.yaml"),
                         "--set", "bogus=1"], capture_output=True, text=True, env=env)
     assert r.returncode != 0 and "unknown config key" in r.stderr
+
+
+def test_max_wall_minutes_stops_cleanly_and_resumes(tmp_path):
+    d = tmp_path / "W"
+    res = train(tiny_cfg(tmp_path, max_wall_minutes=1e-9, total_steps=4000), run_dir=d)
+    assert res["interrupted"] and not res["finished"] and res["board_steps"] < 4000
+    assert (d / "latest.pt").exists() and not (d / "final.pt").exists()
+    # resume with the limit lifted (allowed override) finishes the run
+    cfg = resume_config(d, {"max_wall_minutes": None})
+    assert cfg.max_wall_minutes is None
+    res2 = train(cfg, run_dir=d, resume=True)
+    assert res2["finished"] and res2["board_steps"] == 4000 and (d / "final.pt").exists()
+    assert resume_config(d, {"max_wall_minutes": 690}).max_wall_minutes == 690.0
+    with pytest.raises(ValueError):
+        load_config(None, {"max_wall_minutes": -1})

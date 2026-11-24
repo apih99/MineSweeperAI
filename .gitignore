@@ -10,3 +10,7 @@ checkpoints/
 .pytest_cache/
 events.out.tfevents.*
 .ipynb_checkpoints/
+kaggle.json
+access_token
+.kaggle/
+!models/dqn_9x9_10.pt
