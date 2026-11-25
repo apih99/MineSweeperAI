@@ -60,11 +60,14 @@ function buildGrid() {
 
 function layoutBoard() {
   if (!state.board) return;
-  const w = state.board.width, gap = 3;
+  const w = state.board.width;
   const avail = els.wrap.clientWidth - 8;
   const max = w <= 5 ? 56 : 44;
-  const cell = Math.max(18, Math.min(max, Math.floor((avail - gap * (w - 1)) / w)));
+  // Tighter gaps on narrow screens so 16x16 fits a phone without inner scrolling.
+  const gap = avail < 420 && w > 9 ? 2 : 3;
+  const cell = Math.max(14, Math.min(max, Math.floor((avail - gap * (w - 1)) / w)));
   els.board.style.setProperty("--cell", cell + "px");
+  els.board.style.setProperty("--gap", gap + "px");
 }
 
 function describe(i) {
