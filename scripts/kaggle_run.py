@@ -1,6 +1,6 @@
 """Local helper for the Kaggle GPU kernel (kaggle/run_kaggle.py).
 
-    python scripts/kaggle_run.py push [--sha SHA] [--run-name N] [--set k=v ...] [--resume]
+    python scripts/kaggle_run.py [--kernel SLUG] push [--sha SHA] [--run-name N] [--set k=v ...] [--resume]
                                       [--resume-set k=v ...] [--max-wall-minutes M] [--accelerator ACC]
     python scripts/kaggle_run.py status
     python scripts/kaggle_run.py wait  [--every-minutes 10]
@@ -26,7 +26,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 KAGGLE = ROOT / "kaggle"
 BUILD = ROOT / "runs" / "kaggle" / "_push"
-KERNEL = json.loads((KAGGLE / "kernel-metadata.json").read_text())["id"]
+KERNEL = json.loads((KAGGLE / "kernel-metadata.json").read_text())["id"]  # --kernel overrides (see main)
 CLI = ROOT / ".venv" / ("Scripts" if sys.platform == "win32" else "bin") / "kaggle"
 
 
@@ -94,8 +94,14 @@ def cmd_push(a) -> None:
         src = set_const(src, "RESUME_OVERRIDES", parse_kv(a.resume_set))
     if a.config:
         src = set_const(src, "CONFIG", a.config)
+    if a.runs_json:  # multi-run mode: a JSON list of {"name", "config", "set"}
+        runs = json.loads(Path(a.runs_json).read_text(encoding="utf-8"))
+        src = set_const(src, "RUN_LIST", runs)
+    if a.parallel is not None:
+        src = set_const(src, "PARALLEL", a.parallel)
     (BUILD / "run_kaggle.py").write_text(src, encoding="utf-8", newline="\n")
     meta = json.loads((KAGGLE / "kernel-metadata.json").read_text())
+    meta["id"], meta["title"] = KERNEL, KERNEL.split("/")[1]
     if a.resume:
         meta["kernel_sources"] = [KERNEL]
     (BUILD / "kernel-metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
@@ -131,6 +137,7 @@ def cmd_output(a) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--kernel", help="kernel slug, e.g. minesweeper-rl-m8a (default: id in kaggle/kernel-metadata.json)")
     sub = p.add_subparsers(dest="cmd", required=True)
     q = sub.add_parser("push")
     q.add_argument("--sha")
@@ -139,6 +146,8 @@ def main() -> None:
     q.add_argument("--set", action="append", default=[], metavar="K=V", help="TrainConfig override for a fresh run")
     q.add_argument("--resume-set", action="append", default=[], metavar="K=V", help="override when resuming")
     q.add_argument("--max-wall-minutes", type=float)
+    q.add_argument("--runs-json", help="JSON file: list of {name, config, set} -> multi-run mode (kaggle/run_kaggle.py)")
+    q.add_argument("--parallel", type=int, help="runs in parallel in multi-run mode (one per GPU)")
     q.add_argument("--resume", action="store_true", help="attach the previous version's output and resume it")
     q.add_argument("--accelerator", help="e.g. NvidiaTeslaT4 (see kaggle kernels push --help)")
     q.add_argument("--timeout", type=int, help="kernel run-time limit in seconds")
@@ -148,6 +157,9 @@ def main() -> None:
     o = sub.add_parser("output")
     o.add_argument("--version", required=True)
     a = p.parse_args()
+    if a.kernel:
+        global KERNEL
+        KERNEL = a.kernel if "/" in a.kernel else f"{KERNEL.split('/')[0]}/{a.kernel}"
     {"push": cmd_push, "status": cmd_status, "wait": cmd_wait, "output": cmd_output}[a.cmd](a)
 
 

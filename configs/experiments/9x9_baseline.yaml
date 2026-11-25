@@ -1,0 +1,18 @@
+# Experiment A baseline: configs/9x9.yaml unchanged (constant lr, hard target updates).
+# Seed is chosen on the command line (--set seed=0/1); everything else is the M6 run.
+name: exp_9x9_baseline
+height: 9
+width: 9
+n_mines: 10
+n_envs: 256
+total_steps: 20000000
+channels: 64
+n_layers: 5
+buffer_size: 500000
+batch_size: 256
+learning_starts: 25000
+target_update_every: 1000
+eps_decay_frac: 0.25
+eval_every: 500000
+eval_games: 1000
+checkpoint_every_minutes: 10

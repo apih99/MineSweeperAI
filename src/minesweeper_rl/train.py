@@ -97,6 +97,12 @@ class TrainConfig:
     max_wall_minutes: float | None = None  # stop cleanly (save latest.pt) after this much wall time in THIS process
     out_dir: str = "runs"
     verbose: bool = True
+    # --- M8 experiment knobs (defaults reproduce the M4/M6 behaviour exactly)
+    lr_schedule: str = "constant"  # constant | linear | cosine: lr -> lr * lr_final_frac over total_steps
+    lr_final_frac: float = 0.05
+    target_update: str = "hard"  # hard (copy every target_update_every updates) | polyak (soft, every update)
+    polyak_tau: float = 0.005
+    init_from: str = ""  # checkpoint path: load network weights only (fresh optimizer/replay/counters)
 
 
 # Keys that may be changed when resuming (everything else would change the run's meaning,
@@ -121,6 +127,35 @@ DETERMINISTIC_COLUMNS = CSV_COLUMNS[:-3]
 def epsilon_at(cfg: TrainConfig, board_steps: int) -> float:
     frac = min(1.0, board_steps / max(1.0, cfg.eps_decay_frac * cfg.total_steps))
     return cfg.eps_start + frac * (cfg.eps_end - cfg.eps_start)
+
+
+def lr_at(cfg: TrainConfig, board_steps: int) -> float:
+    """Learning rate for the update made after ``board_steps`` board-steps (a pure function of progress)."""
+    if cfg.lr_schedule == "constant":
+        return cfg.lr
+    p = min(1.0, board_steps / max(1.0, cfg.total_steps))
+    if cfg.lr_schedule == "linear":
+        f = 1.0 - (1.0 - cfg.lr_final_frac) * p
+    else:  # cosine
+        f = cfg.lr_final_frac + (1.0 - cfg.lr_final_frac) * 0.5 * (1.0 + math.cos(math.pi * p))
+    return cfg.lr * f
+
+
+@torch.no_grad()
+def polyak_update(target: torch.nn.Module, online: torch.nn.Module, tau: float) -> None:
+    """target <- (1 - tau) * target + tau * online."""
+    tp, op = list(target.parameters()), list(online.parameters())
+    torch._foreach_mul_(tp, 1.0 - tau)
+    torch._foreach_add_(tp, op, alpha=tau)
+
+
+def load_init_weights(path: str, net_cfg: dict) -> dict:
+    """State dict of the checkpoint at ``path``; the architecture must match ``net_cfg``."""
+    ck = load_torch(Path(path))
+    if dict(ck.get("net", {})) != dict(net_cfg):
+        raise ValueError(f"init_from {path}: checkpoint architecture {ck.get('net')} differs from the "
+                         f"configured network {net_cfg}; channels/n_layers must match")
+    return ck["state_dict"]
 
 
 def config_from_dict(d: dict | None) -> TrainConfig:
@@ -156,6 +191,14 @@ def config_from_dict(d: dict | None) -> TrainConfig:
     cfg = TrainConfig(**d)
     if cfg.device not in ("auto", "cpu", "cuda"):
         raise ValueError(f"device must be auto|cpu|cuda, got {cfg.device!r}")
+    if cfg.lr_schedule not in ("constant", "linear", "cosine"):
+        raise ValueError(f"lr_schedule must be constant|linear|cosine, got {cfg.lr_schedule!r}")
+    if cfg.target_update not in ("hard", "polyak"):
+        raise ValueError(f"target_update must be hard|polyak, got {cfg.target_update!r}")
+    if not 0.0 <= cfg.lr_final_frac <= 1.0:
+        raise ValueError(f"lr_final_frac must be in [0, 1], got {cfg.lr_final_frac}")
+    if not 0.0 < cfg.polyak_tau <= 1.0:
+        raise ValueError(f"polyak_tau must be in (0, 1], got {cfg.polyak_tau}")
     return cfg
 
 
@@ -332,6 +375,10 @@ def train(cfg: TrainConfig, run_dir: str | Path | None = None, resume: bool = Fa
         obs, mask = env.current()
         _truncate_csv(run_dir / "metrics.csv", board_steps)
     else:
+        if cfg.init_from:  # weights only: optimizer, replay, counters and epsilon schedule start fresh
+            sd = load_init_weights(cfg.init_from, net_cfg)
+            online.load_state_dict(sd)
+            target.load_state_dict(sd)
         if (run_dir / "latest.pt").exists() or (run_dir / "metrics.csv").exists():
             raise FileExistsError(f"{run_dir} already holds a run; use --resume or another --run-dir")
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -479,6 +526,9 @@ def train(cfg: TrainConfig, run_dir: str | Path | None = None, resume: bool = Fa
 
                 if len(buf) >= cfg.learning_starts and it % cfg.train_every == 0:
                     for _ in range(cfg.updates_per_step):
+                        if cfg.lr_schedule != "constant":
+                            for g in opt.param_groups:
+                                g["lr"] = lr_at(cfg, board_steps)
                         loss, q_sa = dqn_loss(online, target, buf.sample(cfg.batch_size, device), cfg.gamma)
                         opt.zero_grad()
                         loss.backward()
@@ -488,7 +538,9 @@ def train(cfg: TrainConfig, run_dir: str | Path | None = None, resume: bool = Fa
                         ia["n_upd"] += 1
                         acc[0] += loss.detach()
                         acc[1] += q_sa.mean()
-                        if n_updates % cfg.target_update_every == 0:
+                        if cfg.target_update == "polyak":
+                            polyak_update(target, online, cfg.polyak_tau)
+                        elif n_updates % cfg.target_update_every == 0:
                             target.load_state_dict(online.state_dict())
 
                 if board_steps >= next_eval or board_steps >= cfg.total_steps:

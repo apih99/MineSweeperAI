@@ -326,3 +326,102 @@ def test_max_wall_minutes_stops_cleanly_and_resumes(tmp_path):
     assert resume_config(d, {"max_wall_minutes": 690}).max_wall_minutes == 690.0
     with pytest.raises(ValueError):
         load_config(None, {"max_wall_minutes": -1})
+
+
+# ------------------------------------------------------------------ M8 experiment knobs
+def test_new_knobs_default_to_old_behaviour():
+    cfg = TrainConfig()
+    assert (cfg.lr_schedule, cfg.target_update, cfg.init_from) == ("constant", "hard", "")
+    for f in ("5x5.yaml", "9x9.yaml", "16x16.yaml"):
+        c = load_config(CONFIGS / f)
+        assert (c.lr_schedule, c.target_update, c.init_from) == ("constant", "hard", "")
+    for bad in (["lr_schedule=step"], ["target_update=ema"], ["lr_final_frac=2"], ["polyak_tau=0"]):
+        with pytest.raises(ValueError):
+            load_config(None, bad)
+
+
+def test_lr_schedules():
+    from minesweeper_rl.train import lr_at
+
+    base = TrainConfig(total_steps=1000, lr=1e-3, lr_final_frac=0.05)
+    assert lr_at(base, 777) == 1e-3
+    for kind in ("linear", "cosine"):
+        c = dataclasses.replace(base, lr_schedule=kind)
+        assert lr_at(c, 0) == pytest.approx(1e-3)
+        assert lr_at(c, 1000) == pytest.approx(5e-5)
+        assert lr_at(c, 5000) == pytest.approx(5e-5)  # clamped past the end
+        vals = [lr_at(c, s) for s in range(0, 1001, 50)]
+        assert all(a >= b for a, b in zip(vals, vals[1:]))
+    assert lr_at(dataclasses.replace(base, lr_schedule="linear"), 500) == pytest.approx(1e-3 * 0.525)
+    assert lr_at(dataclasses.replace(base, lr_schedule="cosine"), 500) == pytest.approx(1e-3 * 0.525)
+
+
+def test_polyak_update():
+    from minesweeper_rl.train import polyak_update
+
+    a, b = QNetwork(channels=4, n_layers=1), QNetwork(channels=4, n_layers=1)
+    before = [p.clone() for p in a.parameters()]
+    polyak_update(a, b, 0.25)
+    for p0, pa, pb in zip(before, a.parameters(), b.parameters()):
+        assert torch.allclose(pa, 0.75 * p0 + 0.25 * pb)
+
+
+@pytest.mark.parametrize("kw", [
+    dict(lr_schedule="cosine", lr_final_frac=0.05),
+    dict(target_update="polyak", polyak_tau=0.05),
+    dict(lr_schedule="linear", target_update="polyak", polyak_tau=0.02),
+])
+def test_exact_resume_with_schedule_and_polyak(tmp_path, kw):
+    """lr schedule (lives in the optimizer state) and the polyak target resume bit-for-bit."""
+    a = tmp_path / "A"
+    train(tiny_cfg(tmp_path, **kw), run_dir=a)
+    b, res = run_interrupted(tmp_path, "B", tiny_cfg(tmp_path, **kw))
+    assert res["finished"]
+    assert_same_run(a, b)
+    ck = load_torch(b / "latest.pt")
+    if "lr_schedule" in kw:
+        assert ck["optimizer"]["param_groups"][0]["lr"] < 3e-4  # the schedule really moved the lr
+    if kw.get("target_update") == "polyak":
+        diff = max((ck["state_dict"][k] - ck["target_state_dict"][k]).abs().max().item() for k in ck["state_dict"])
+        assert diff > 0  # soft target lags the online net (a hard copy at update 20k would be equal)
+
+
+def test_init_from_loads_weights_only(tmp_path):
+    src = tmp_path / "src"
+    train(tiny_cfg(tmp_path, total_steps=800), run_dir=src)
+    best = torch.load(src / "final.pt", weights_only=True)
+    cfg = tiny_cfg(tmp_path, init_from=str(src / "final.pt"), eps_start=0.1, name="ft")
+    d = tmp_path / "ft"
+    train(cfg, run_dir=d, stop_at=0)
+    ck = load_torch(d / "latest.pt")
+    for k, v in best["state_dict"].items():
+        assert torch.equal(ck["state_dict"][k], v) and torch.equal(ck["target_state_dict"][k], v)
+    assert ck["board_steps"] == 0 and ck["n_updates"] == 0 and not ck["optimizer"]["state"]
+    assert ck["history"] == [] and ck["best"] == -1.0
+    # a full fine-tune run then resumes exactly like any other run
+    a, b = tmp_path / "A", tmp_path / "B"
+    train(dataclasses.replace(cfg, name="a"), run_dir=a)
+    train(dataclasses.replace(cfg, name="b"), run_dir=b, stop_at=1000)
+    train(resume_config(b, {}), run_dir=b, resume=True)
+    assert_same_run(a, b)
+
+
+def test_init_from_architecture_mismatch(tmp_path):
+    src = tmp_path / "src"
+    train(tiny_cfg(tmp_path, total_steps=400), run_dir=src)
+    with pytest.raises(ValueError, match="differs from the configured network"):
+        train(tiny_cfg(tmp_path, channels=16, init_from=str(src / "final.pt")), run_dir=tmp_path / "x")
+    with pytest.raises(ValueError, match="differs from the configured network"):
+        train(tiny_cfg(tmp_path, n_layers=3, init_from=str(src / "final.pt")), run_dir=tmp_path / "y")
+
+
+def test_experiment_configs_differ_from_9x9_only_in_the_knob():
+    base = dataclasses.asdict(load_config(CONFIGS / "9x9.yaml"))
+    base["name"] = "exp_9x9_baseline"
+    exp = CONFIGS / "experiments"
+    assert dataclasses.asdict(load_config(exp / "9x9_baseline.yaml")) == base
+    knobs = {"lr_decay": dict(lr_schedule="cosine"), "polyak": dict(target_update="polyak"),
+             "both": dict(lr_schedule="cosine", target_update="polyak")}
+    for v, kv in knobs.items():
+        got = dataclasses.asdict(load_config(exp / f"9x9_{v}.yaml"))
+        assert got == {**base, "name": f"exp_9x9_{v}", **kv, "lr_final_frac": 0.05, "polyak_tau": 0.005}
