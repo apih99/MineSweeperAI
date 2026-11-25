@@ -63,8 +63,83 @@ GIF seeds (scanning upward from 5,000,000 and taking the first game with each ou
 
 - **A correlated-RNG bug halved the baselines.** The first evaluation harness seeded the agent and the environment with bit-identical random streams, so the agents' random guesses were correlated with where the mines were. The rule solver scored about 37% instead of its true ~69%. I caught it by cross-checking against an exhaustive-logic solver, which should never do worse than a two-rule one; the fix gives the agent its own independent stream, and a regression test guards it (`tests/test_evaluate.py`). Lesson: a baseline that looks too weak is a bug report.
 - **Exact resume.** Training survives being killed at any moment and continues bit-for-bit: weights, optimiser state, replay buffer, every RNG state and the logs are checkpointed atomically, and a test compares a straight 2k-step run with 1k steps + a fresh-process resume. That matters because free GPU sessions are capped at 12 hours.
-- **Checkpoint selection is noisy.** The best checkpoint scores 86.6-87.6%, the final one 79.5-80.1%. Evals of consecutive checkpoints swing by more than their confidence intervals, so "best of 40" flatters the model; I report unseen seeds and the final checkpoint next to it. Fixing this properly (learning-rate decay, checkpoint averaging) is on the roadmap.
+- **Checkpoint selection is noisy.** The best checkpoint scores 86.6-87.6%, the final one 79.5-80.1%. Evals of consecutive checkpoints swing by more than their confidence intervals, so "best of 40" flatters the model; I report unseen seeds and the final checkpoint next to it. I tried learning-rate decay and soft target updates ([Experiments](#experiments)); neither reliably fixed it.
 - **The ceiling is below 100%.** Some positions are genuine guesses (no cell is provably safe), so no agent wins every game. About 90% of the 9x9 losses came at a click where the two-rule solver also had no safe cell (see above).
+
+## Experiments
+
+Two follow-up experiments, run on a Kaggle T4 machine (2 GPUs, 4 CPU cores) after the main 9x9 run. All win rates below are over **10,000 unseen games** (seeds 5,000,000+, never used for training or for picking `best.pt`), with 95% Wilson CIs. The raw numbers are in [results/experiments/](results/experiments/) (per-run JSON, learning-curve CSVs, `summary_*.json`). I recomputed the headline checkpoints locally on CPU and got the identical games and results.
+
+![Experiments: learning curves and unseen-seed win rates](docs/assets/experiments.png)
+
+### A. Can learning-rate decay or soft target updates stabilise 9x9 training?
+
+**Question.** The 9x9 run reached 86.6% at its best checkpoint but only 79.5% at the end, because the evaluation win rate swung between about 74% and 87% late in training. Does decaying the learning rate and/or soft (Polyak) target updates fix that?
+
+**Setup.** Four variants, each trained with 2 seeds (0 and 1), 20M board-steps, everything else identical to `configs/9x9.yaml` ([configs/experiments/](configs/experiments/)): `baseline` (constant lr 3e-4, hard target copy every 1,000 updates), `lr_decay` (cosine from 3e-4 down to 5% of that over the run; I picked cosine over linear because it changes slowly at both ends, but did not test linear), `polyak` (tau = 0.005 applied every update, no hard copies) and `both`. Late-training stability is the mean and standard deviation of the 1,000-game eval win rate over the last 25% of evals (the last 10 of 40). That std includes about 1.1 points of pure sampling noise from a 1,000-game eval.
+
+**Per run**
+
+
+| Run | best.pt, 10k unseen | final.pt, 10k unseen | late evals (last 25%): mean +- std | min-max |
+|---|---|---|---|---|
+| 9x9_baseline_s0 | 86.9% (86.2%-87.5%) | 80.9% (80.1%-81.6%) | 83.5% +- 1.9% | 79.5%-86.3% |
+| 9x9_baseline_s1 | 88.1% (87.4%-88.7%) | 86.2% (85.5%-86.8%) | 84.7% +- 3.2% | 80.3%-89.8% |
+| 9x9_lr_decay_s0 | 87.4% (86.7%-88.0%) | 87.9% (87.2%-88.5%) | 84.8% +- 3.6% | 78.5%-88.4% |
+| 9x9_lr_decay_s1 | 86.9% (86.2%-87.5%) | 83.4% (82.7%-84.1%) | 85.6% +- 1.9% | 83.4%-88.0% |
+| 9x9_polyak_s0 | 85.8% (85.1%-86.5%) | 79.0% (78.2%-79.7%) | 83.0% +- 3.9% | 77.1%-87.0% |
+| 9x9_polyak_s1 | 86.5% (85.8%-87.1%) | 85.8% (85.1%-86.5%) | 84.3% +- 3.1% | 79.1%-87.5% |
+| 9x9_both_s0 | 87.5% (86.8%-88.1%) | 82.5% (81.7%-83.2%) | 83.3% +- 2.5% | 79.3%-87.1% |
+| 9x9_both_s1 | 85.8% (85.1%-86.5%) | 82.2% (81.4%-82.9%) | 85.2% +- 2.9% | 80.0%-88.3% |
+
+**Per variant** (mean of the 2 seeds; the individual seeds in brackets)
+
+
+| Variant | best.pt | final.pt | late-eval mean | late-eval std (mean of seeds) |
+|---|---|---|---|---|
+| baseline | 87.5% (86.9%, 88.1%) | 83.5% (80.9%, 86.2%) | 84.1% | 2.6% |
+| lr_decay | 87.1% (87.4%, 86.9%) | 85.6% (87.9%, 83.4%) | 85.2% | 2.8% |
+| polyak | 86.2% (85.8%, 86.5%) | 82.4% (79.0%, 85.8%) | 83.6% | 3.5% |
+| both | 86.6% (87.5%, 85.8%) | 82.3% (82.5%, 82.2%) | 84.3% | 2.7% |
+
+**Result.** No variant is a clear winner. The best-checkpoint scores are all 86-88% and indistinguishable. For the final checkpoint, `lr_decay` has the highest mean (85.6% vs 83.5% for baseline), but the two seeds of every variant except `both` differ by 4-7 points, which is larger than the gap between variants; with 2 seeds I cannot call that gap real. Soft target updates did not help (nominally worse). No variant removed the late swings: the late-eval std stays at 2.6-3.5 points everywhere, well above the 1.1-point sampling noise, so checkpoint-to-checkpoint wobble is real under every setting. (Whether a lower final lr or a longer decay would calm it is untested.) Practical conclusion: keep picking `best.pt`, and treat the final checkpoint's 79-88% range as mostly seed luck rather than a property of these settings. The unseen-seed score of `best.pt` held up (86-88%), so the best-of-40 selection is not badly misleading.
+
+### B. Does fine-tuning the 9x9 model on 16x16 beat zero-shot, and beat training from scratch?
+
+**Setup.** The 9x9 model wins 56.7% of 16x16 / 40-mine games zero-shot. Experiment A found no clear winner, so both B variants use the baseline settings. `finetune` loads the weights of `models/dqn_9x9_10.pt` (weights only: fresh optimiser, replay and counters) and explores from epsilon = 0.1; `scratch` starts from random weights with the normal epsilon schedule (1.0 down to 0.01). Same 16x16 config, same budget of 25M board-steps (about 2.2 hours each on a T4), 2 seeds each.
+
+**Per run**
+
+
+| Run | best.pt, 10k unseen | final.pt, 10k unseen | late evals (last 25%): mean +- std | min-max |
+|---|---|---|---|---|
+| 16x16_finetune_s0 | 65.2% (64.2%-66.1%) | 63.3% (62.4%-64.3%) | 64.1% +- 2.9% | 59.2%-67.3% |
+| 16x16_finetune_s1 | 68.5% (67.6%-69.4%) | 63.4% (62.5%-64.3%) | 62.6% +- 2.9% | 58.7%-66.5% |
+| 16x16_scratch_s0 | 64.0% (63.1%-65.0%) | 51.6% (50.6%-52.6%) | 60.5% +- 7.1% | 51.4%-67.0% |
+| 16x16_scratch_s1 | 67.2% (66.3%-68.1%) | 58.0% (57.0%-59.0%) | 62.9% +- 4.0% | 58.3%-68.4% |
+
+**Per variant** (mean of the 2 seeds; the individual seeds in brackets)
+
+
+| Variant | best.pt | final.pt | late-eval mean | late-eval std (mean of seeds) |
+|---|---|---|---|---|
+| finetune | 66.8% (65.2%, 68.5%) | 63.4% (63.3%, 63.4%) | 63.4% | 2.9% |
+| scratch | 65.6% (64.0%, 67.2%) | 54.8% (51.6%, 58.0%) | 61.7% | 5.5% |
+
+Reference on the same 10,000 unseen games: 9x9 model zero-shot **56.70%** (55.73-57.67%), rule solver **36.09%** (35.15-37.04%).
+
+**Result.** Fine-tuning clearly beats zero-shot: the fine-tuned seeds finish at 63.3% and 63.4% (final) and reach 65.2% and 68.5% at their best checkpoint, 6.6-11.8 points above 56.7%, with 10k-game CIs of about 1 point. Against scratch the picture is subtler. The fine-tuned run starts at about the zero-shot level (~58% at the first eval) and wanders between roughly 50% and 70%, while scratch needs about 8M steps to catch up with zero-shot. By the end both reach about the same best-checkpoint score (66.8% vs 65.6%, within noise), but the final scratch checkpoints are worse and more erratic (51.6% and 58.0%; late-eval std 5.5 vs 2.9 points). My reading: fine-tuning gives a decent 16x16 agent roughly 8M steps sooner and a more reliable final checkpoint, but I did not show that it reaches a higher ceiling than scratch. Neither is converged (the 16x16 config's own budget is 50M steps) and both curves are still noisy at 25M.
+
+### Limitations
+
+- **Two seeds per cell.** The seed-to-seed spread (4-7 points for final checkpoints) is as large as most differences between settings. Read the A table as "no detectable effect", not "no effect".
+- **`best.pt` is picked by 1,000-game evals**, so some best-of-N optimism remains. Unseen seeds remove the selection overlap, but the "best" columns still overstate what one fresh run would give.
+- One lr schedule shape and one tau were tried. A gamma sweep, a guess penalty and a bigger network were out of scope.
+- The 16x16 runs use half the budget of `configs/16x16.yaml`.
+
+Compute: A (8 runs x 20M steps) took 2.6 h and B (4 runs x 25M steps) 4.4 h of Kaggle session time, two runs in parallel, one per GPU. Per-run speed with two in parallel was about 9.2k board-steps/s on 9x9 (same as the single run in M6) and 3.3k on 16x16, so the second GPU doubled throughput even with only 4 CPU cores. Together with a 15-minute throughput benchmark that is about 7.3 h of session time.
+
+**Candidate model (not promoted).** [models/dqn_16x16_40_finetune.pt](models/dqn_16x16_40_finetune.pt) is the `best.pt` of the fine-tune seed-1 run: **68.50%** (67.58-69.40%) on the 10,000 unseen 16x16 games, versus 56.70% zero-shot. It was chosen as the best of four runs, so expect a typical fine-tuned model nearer 63-67%. The web demo, GIFs and headline numbers above still use `dqn_9x9_10.pt`.
 
 ## Reproduce
 
@@ -122,21 +197,21 @@ Pushes to `main` that touch `web/` deploy to GitHub Pages (`.github/workflows/pa
 ## Project structure
 
 ```
-configs/            YAML per run (5x5, 9x9, 16x16)
+configs/            YAML per run (5x5, 9x9, 16x16); experiments/ for M8
 src/minesweeper_rl/
   env/              core.py (rules), gym_env.py (single board), batched.py (vectorised)
   agents/           network.py (5x64 FCN), dqn.py (Double DQN, replay, masking), baselines.py (random, rule)
   train.py  evaluate.py  render.py  play.py  checkpoint.py
 tests/              rules, env equivalence, masking, resume, evaluation, rendering
-scripts/            export_onnx.py, make_figures.py, make_gifs.py, kaggle_run.py, bench_env.py
+scripts/            export_onnx.py, make_figures.py, make_gifs.py, kaggle_run.py, eval_run.py, experiments_collect.py, experiments_table.py, bench_env.py
 kaggle/             kernel that trains on Kaggle
-models/             dqn_9x9_10.pt (trained weights)
+models/             dqn_9x9_10.pt (trained weights), dqn_16x16_40_finetune.pt (candidate, not promoted)
 web/                static in-browser demo (ONNX model, JS game, UI, JS tests)
-results/            baselines/ and dqn/ JSON + learning-curve CSVs (the source of every number here)
+results/            baselines/, dqn/ and experiments/ JSON + learning-curve CSVs (the source of every number here)
 docs/               assets/ (README images), NOTES.md
 ```
 
 ## Roadmap
 
-- **M8, experiments:** gamma sweep (including 0), a penalty for guessing, fine-tuning on 16x16, learning-rate decay / checkpoint averaging to tame the noisy late-training evals, a bigger network.
+- ~~M8, experiments~~ (done): lr decay / soft target updates on 9x9 and fine-tuning on 16x16, see [Experiments](#experiments). Not done: gamma sweep, a guess penalty, a bigger network, checkpoint averaging.
 - ~~M9, browser demo~~ (done): see [Web demo](#web-demo).

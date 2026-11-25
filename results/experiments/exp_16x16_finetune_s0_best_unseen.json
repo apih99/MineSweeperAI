@@ -1,0 +1,17 @@
+{
+  "agent": "dqn",
+  "board": "16x16",
+  "n_mines": 40,
+  "n_games": 10000,
+  "wins": 6518,
+  "win_rate": 0.6518,
+  "win_rate_ci95": [
+    0.6424058820447132,
+    0.661077531767037
+  ],
+  "mean_safe_revealed_frac": 0.775192129629633,
+  "mean_steps": 63.2633,
+  "seconds": 64.33486815900051,
+  "checkpoint": "best.pt",
+  "seed_base": 5000000
+}

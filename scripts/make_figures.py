@@ -160,7 +160,7 @@ def _bars(ax, groups: dict[str, list[str]], title: str, ref_lines: list[tuple[st
         labels.append(v.replace("_", " "))
     for text, y, color in ref_lines:
         ax.axhline(y, color=color, lw=1.8, ls="--", zorder=2)
-        ax.text(len(groups) - 0.55, y, text, color=color, ha="right", va="bottom", fontsize=10, fontweight="bold")
+        ax.text(-0.48, y, text, color=color, ha="left", va="bottom", fontsize=10, fontweight="bold")
     ax.set_xticks(xs)
     ax.set_xticklabels(labels)
     pct(ax)
@@ -196,17 +196,15 @@ def experiments() -> None:
             "A: 9x9 eval win rate (1,000 games) during training")
     axes[0, 0].set_ylim(0.5, 0.95)
     axes[0, 0].set_ylabel("Win rate (%)")
-    _bars(axes[0, 1], a, "A: 9x9, 10,000 unseen games (bars = mean of 2 seeds, dots = runs with 95% CI)",
+    _bars(axes[0, 1], a, "A: 9x9, 10,000 unseen games (bar = mean of 2 seeds)",
           [("rule solver", load_json(RES / "baselines/rule_9x9_10_unseen.json")["win_rate"], C_RULE)])
     axes[0, 1].set_ylim(0.6, 0.97)
-    axes[0, 1].text(0.0, 0.62, "pale = final.pt, solid = best.pt", fontsize=9.5, color="#546e7a")
     if b:
         _curves(axes[1, 0], b, 1e6, "million board-steps",
                 "B: 16x16 eval win rate (1,000 games) during training")
         zs = load_json(EXP / "zeroshot_9x9_on_16x16_40_unseen.json")["win_rate"]
-        axes[1, 0].axhline(zs, color=C_DQN, lw=1.8, ls="--")
-        axes[1, 0].text(0.2, zs + 0.01, f"9x9 model zero-shot {zs:.1%}", color=C_DQN_TEXT, fontweight="bold",
-                        fontsize=10)
+        axes[1, 0].axhline(zs, color=C_DQN, lw=1.8, ls="--", label=f"9x9 model zero-shot ({zs:.1%})")
+        axes[1, 0].legend(frameon=False, loc="lower right", fontsize=10)
         axes[1, 0].set_ylim(0, 0.8)
         axes[1, 0].set_ylabel("Win rate (%)")
         rule = load_json(EXP / "rule_16x16_40_unseen.json")["win_rate"]
@@ -215,7 +213,10 @@ def experiments() -> None:
         axes[1, 1].set_ylim(0, 0.85)
     for ax in axes[:, 1]:
         ax.set_ylabel("Win rate (%)")
-    fig.tight_layout()
+    fig.text(0.01, 0.004, "Right panels: pale bar = final.pt, solid bar = best.pt (mean of 2 seeds); dots = single runs "
+             "with 95% CI. Left panels: thin lines = single runs, thick = mean of 2 seeds.", fontsize=9.5,
+             color="#546e7a")
+    fig.tight_layout(rect=(0, 0.02, 1, 1))
     fig.savefig(OUT / "experiments.png", dpi=100)
     plt.close(fig)
 

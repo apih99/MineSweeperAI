@@ -103,7 +103,7 @@ MineSweeperAI/
 | M5 | Logging, configs, checkpoint/resume | Survives kill + resume |
 | M6 | 9×9 on Kaggle | Final 10k-game win rate; ideally beats rule solver |
 | M7 | GIFs, heatmap, charts, README | README tells the full story |
-| M8 | Experiments: γ sweep, guess penalty, 16×16 transfer | Results table in README |
+| M8 | Experiments (scope narrowed): (A) 9×9 stability: lr decay / Polyak target, 2 seeds each; (B) 16×16 fine-tune from the 9×9 model vs scratch. γ sweep, guess penalty, bigger nets dropped | Results tables + figure in README |
 | M9 | Browser demo | Public playable link |
 
 ## Workflow
