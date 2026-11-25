@@ -4,6 +4,8 @@
 
 **A Double-DQN agent that learns Minesweeper from scratch, with a fully convolutional network that plays any board size.**
 
+**[Live demo: watch the agent play, or play yourself with hints](https://apih99.github.io/MineSweeperAI/)** (runs in your browser, no server)
+
 - **9x9 / 10 mines: 86.6% win rate** (95% CI 85.9-87.2%) vs 68.1% for a hand-written deduction solver and ~0% for random clicking.
 - **Zero-shot transfer:** the same weights, never trained on anything bigger, win **56.6%** of 16x16 / 40-mine games (rule solver: 36.7%).
 - Trained in **~37 minutes on a free Kaggle T4**. Win rates are over 10,000 fixed-seed games.
@@ -103,6 +105,20 @@ python -m minesweeper_rl.render --checkpoint models/dqn_9x9_10.pt --height 9 --w
 
 More detail (batched-env benchmark, config keys, checkpoint formats, Kaggle workflow) is in [docs/NOTES.md](docs/NOTES.md); the original design is in [PLAN.md](PLAN.md).
 
+## Web demo
+
+The trained network is exported to ONNX and runs entirely in the browser with [onnxruntime-web](https://onnxruntime.ai/) (WebAssembly); there is no server. `web/` is a static site (vanilla JS modules, no build step): `game.js` is a port of the Python environment, `agent.js` runs the model and applies the action mask, `app.js` is the UI. You can watch the agent play, play yourself (long-press or right-click to flag; the Hint button shows the agent's choice) and overlay its Q-value heatmap. The ONNX model has dynamic height/width, so one file serves 5x5, 9x9 and 16x16; its output is raw Q-values of shape `(1, H*W)` and masking is done in JS.
+
+```powershell
+pip install -e ".[dev,web]"
+python scripts/export_onnx.py           # writes web/model/dqn_9x9_10.onnx and web/tests/fixtures.json
+pytest tests/test_onnx_export.py        # ONNX vs PyTorch parity
+node --test "web/tests/*.test.mjs"      # JS game logic vs Python fixtures
+cd web; python -m http.server           # try it locally at http://localhost:8000
+```
+
+Pushes to `main` that touch `web/` deploy to GitHub Pages (`.github/workflows/pages.yml`). Seeds in the demo use a JavaScript generator and do not reproduce the Python boards.
+
 ## Project structure
 
 ```
@@ -112,9 +128,10 @@ src/minesweeper_rl/
   agents/           network.py (5x64 FCN), dqn.py (Double DQN, replay, masking), baselines.py (random, rule)
   train.py  evaluate.py  render.py  play.py  checkpoint.py
 tests/              rules, env equivalence, masking, resume, evaluation, rendering
-scripts/            make_figures.py, make_gifs.py, kaggle_run.py, bench_env.py
+scripts/            export_onnx.py, make_figures.py, make_gifs.py, kaggle_run.py, bench_env.py
 kaggle/             kernel that trains on Kaggle
 models/             dqn_9x9_10.pt (trained weights)
+web/                static in-browser demo (ONNX model, JS game, UI, JS tests)
 results/            baselines/ and dqn/ JSON + learning-curve CSVs (the source of every number here)
 docs/               assets/ (README images), NOTES.md
 ```
@@ -122,4 +139,4 @@ docs/               assets/ (README images), NOTES.md
 ## Roadmap
 
 - **M8, experiments:** gamma sweep (including 0), a penalty for guessing, fine-tuning on 16x16, learning-rate decay / checkpoint averaging to tame the noisy late-training evals, a bigger network.
-- **M9, browser demo:** ONNX export + onnxruntime-web on GitHub Pages, to watch the agent or play with its hints.
+- ~~M9, browser demo~~ (done): see [Web demo](#web-demo).

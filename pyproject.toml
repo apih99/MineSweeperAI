@@ -21,6 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest"]
+web = ["onnx", "onnxruntime", "onnxscript"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
