@@ -425,3 +425,13 @@ def test_experiment_configs_differ_from_9x9_only_in_the_knob():
     for v, kv in knobs.items():
         got = dataclasses.asdict(load_config(exp / f"9x9_{v}.yaml"))
         assert got == {**base, "name": f"exp_9x9_{v}", **kv, "lr_final_frac": 0.05, "polyak_tau": 0.005}
+
+
+def test_16x16_experiment_configs():
+    root = CONFIGS.parent
+    s = load_config(CONFIGS / "experiments" / "16x16_scratch.yaml")
+    f = load_config(CONFIGS / "experiments" / "16x16_finetune.yaml")
+    assert dataclasses.replace(f, name=s.name, init_from="", eps_start=s.eps_start) == s
+    assert (f.init_from, f.eps_start, s.init_from, s.eps_start) == ("models/dqn_9x9_10.pt", 0.1, "", 1.0)
+    assert (root / f.init_from).exists()
+    assert load_torch(root / f.init_from)["net"] == {"channels": f.channels, "n_layers": f.n_layers}

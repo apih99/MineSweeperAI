@@ -119,8 +119,110 @@ def results_comparison() -> None:
     plt.close(fig)
 
 
+EXP = RES / "experiments"
+VARIANT_COLORS = {"baseline": "#8c8c8c", "lr_decay": "#0072B2", "polyak": "#009E73", "both": "#D55E00",
+                  "finetune": "#D55E00", "scratch": "#0072B2"}
+
+
+def _runs(prefix: str, variants: list[str]) -> dict[str, list[str]]:
+    out = {}
+    for v in variants:
+        names = sorted(p.stem for p in (EXP / "metrics").glob(f"{prefix}{v}_s*.csv"))
+        if names:
+            out[v] = names
+    return out
+
+
+def _bars(ax, groups: dict[str, list[str]], title: str, ref_lines: list[tuple[str, float, str]] = ()) -> None:
+    """Per variant: bars = mean over seeds of final.pt / best.pt unseen win rate; dots + CI = single runs."""
+    xs, labels = [], []
+    for i, (v, names) in enumerate(groups.items()):
+        for j, which in enumerate(("final", "best")):
+            vals = []
+            for n in names:
+                f = EXP / f"{n}_{which}_unseen.json"
+                if f.exists():
+                    vals.append(load_json(f))
+            if not vals:
+                continue
+            x = i + (j - 0.5) * 0.36
+            m = np.mean([r["win_rate"] for r in vals])
+            ax.bar(x, m, 0.34, color=VARIANT_COLORS[v], alpha=1.0 if which == "best" else 0.55, zorder=3,
+                   label=None)
+            for k, r in enumerate(vals):
+                lo, hi = r["win_rate_ci95"]
+                xx = x + (k - (len(vals) - 1) / 2) * 0.08
+                ax.errorbar(xx, r["win_rate"], yerr=[[r["win_rate"] - lo], [hi - r["win_rate"]]], color=INK, lw=1,
+                            capsize=2, marker="o", ms=3.5, zorder=4)
+            ax.text(x, max(r["win_rate_ci95"][1] for r in vals) + 0.012, f"{m:.1%}", ha="center", va="bottom",
+                    fontsize=9.5, fontweight="bold")
+        xs.append(i)
+        labels.append(v.replace("_", " "))
+    for text, y, color in ref_lines:
+        ax.axhline(y, color=color, lw=1.8, ls="--", zorder=2)
+        ax.text(len(groups) - 0.55, y, text, color=color, ha="right", va="bottom", fontsize=10, fontweight="bold")
+    ax.set_xticks(xs)
+    ax.set_xticklabels(labels)
+    pct(ax)
+    ax.set_title(title, loc="left", fontweight="bold", fontsize=12.5)
+    ax.grid(axis="y", color="#eceff1", lw=1)
+    ax.set_axisbelow(True)
+
+
+def _curves(ax, groups: dict[str, list[str]], unit: float, xlabel: str, title: str) -> None:
+    for v, names in groups.items():
+        ds = [load_csv(EXP / "metrics" / f"{n}.csv") for n in names]
+        for d in ds:
+            ax.plot(d["board_steps"] / unit, d["eval_win_rate"], color=VARIANT_COLORS[v], lw=1, alpha=0.45)
+        n = min(len(d["board_steps"]) for d in ds)
+        ax.plot(ds[0]["board_steps"][:n] / unit, np.mean([d["eval_win_rate"][:n] for d in ds], axis=0),
+                color=VARIANT_COLORS[v], lw=2.4, label=v.replace("_", " "))
+    ax.set_xlabel(xlabel)
+    pct(ax)
+    ax.set_title(title, loc="left", fontweight="bold", fontsize=12.5)
+    ax.grid(axis="y", color="#eceff1", lw=1)
+    ax.set_axisbelow(True)
+    ax.legend(frameon=False, loc="lower right", fontsize=10)
+
+
+def experiments() -> None:
+    a = _runs("exp_9x9_", ["baseline", "lr_decay", "polyak", "both"])
+    b = _runs("exp_16x16_", ["scratch", "finetune"])
+    if not a:
+        return
+    rows = 2 if b else 1
+    fig, axes = plt.subplots(rows, 2, figsize=(12.5, 4.9 * rows), squeeze=False)
+    _curves(axes[0, 0], a, 1e6, "million board-steps",
+            "A: 9x9 eval win rate (1,000 games) during training")
+    axes[0, 0].set_ylim(0.5, 0.95)
+    axes[0, 0].set_ylabel("Win rate (%)")
+    _bars(axes[0, 1], a, "A: 9x9, 10,000 unseen games (bars = mean of 2 seeds, dots = runs with 95% CI)",
+          [("rule solver", load_json(RES / "baselines/rule_9x9_10_unseen.json")["win_rate"], C_RULE)])
+    axes[0, 1].set_ylim(0.6, 0.97)
+    axes[0, 1].text(0.0, 0.62, "pale = final.pt, solid = best.pt", fontsize=9.5, color="#546e7a")
+    if b:
+        _curves(axes[1, 0], b, 1e6, "million board-steps",
+                "B: 16x16 eval win rate (1,000 games) during training")
+        zs = load_json(EXP / "zeroshot_9x9_on_16x16_40_unseen.json")["win_rate"]
+        axes[1, 0].axhline(zs, color=C_DQN, lw=1.8, ls="--")
+        axes[1, 0].text(0.2, zs + 0.01, f"9x9 model zero-shot {zs:.1%}", color=C_DQN_TEXT, fontweight="bold",
+                        fontsize=10)
+        axes[1, 0].set_ylim(0, 0.8)
+        axes[1, 0].set_ylabel("Win rate (%)")
+        rule = load_json(EXP / "rule_16x16_40_unseen.json")["win_rate"]
+        _bars(axes[1, 1], b, "B: 16x16/40, 10,000 unseen games",
+              [("rule solver", rule, C_RULE), ("zero-shot", zs, C_DQN_TEXT)])
+        axes[1, 1].set_ylim(0, 0.85)
+    for ax in axes[:, 1]:
+        ax.set_ylabel("Win rate (%)")
+    fig.tight_layout()
+    fig.savefig(OUT / "experiments.png", dpi=100)
+    plt.close(fig)
+
+
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
     learning_curves()
     results_comparison()
+    experiments()
     print("wrote", sorted(p.name for p in OUT.glob("*.png")))

@@ -1,0 +1,274 @@
+{
+  "exp_9x9_baseline_s0": {
+    "late": {
+      "n_evals": 40,
+      "late_k": 10,
+      "late_mean": 0.8349,
+      "late_std": 0.019353150762716754,
+      "late_min": 0.795,
+      "late_max": 0.863,
+      "last_eval": 0.795,
+      "max_eval": 0.887,
+      "steps_per_s_median": 8997.05,
+      "wall_s": 2262.4,
+      "board_steps": 20000000
+    },
+    "finished": true,
+    "best": {
+      "win_rate": 0.8688,
+      "ci95": [
+        0.8620407997053345,
+        0.8752759526910647
+      ],
+      "wins": 8688,
+      "n_games": 10000
+    },
+    "final": {
+      "win_rate": 0.8087,
+      "ci95": [
+        0.8008728602595935,
+        0.8162900504366334
+      ],
+      "wins": 8087,
+      "n_games": 10000
+    }
+  },
+  "exp_9x9_baseline_s1": {
+    "late": {
+      "n_evals": 40,
+      "late_k": 10,
+      "late_mean": 0.8467,
+      "late_std": 0.03193065402816964,
+      "late_min": 0.803,
+      "late_max": 0.898,
+      "last_eval": 0.864,
+      "max_eval": 0.898,
+      "steps_per_s_median": 9418.9,
+      "wall_s": 2162.6,
+      "board_steps": 20000000
+    },
+    "finished": true,
+    "best": {
+      "win_rate": 0.8809,
+      "ci95": [
+        0.8744047031798499,
+        0.8871027561145877
+      ],
+      "wins": 8809,
+      "n_games": 10000
+    },
+    "final": {
+      "win_rate": 0.8615,
+      "ci95": [
+        0.8545907455332382,
+        0.8681316134453365
+      ],
+      "wins": 8615,
+      "n_games": 10000
+    }
+  },
+  "exp_9x9_both_s0": {
+    "late": {
+      "n_evals": 40,
+      "late_k": 10,
+      "late_mean": 0.8332,
+      "late_std": 0.02499688869528454,
+      "late_min": 0.793,
+      "late_max": 0.871,
+      "last_eval": 0.824,
+      "max_eval": 0.871,
+      "steps_per_s_median": 9402.95,
+      "wall_s": 2163.7,
+      "board_steps": 20000000
+    },
+    "finished": true,
+    "best": {
+      "win_rate": 0.8745,
+      "ci95": [
+        0.8678626555055904,
+        0.8808497191485625
+      ],
+      "wins": 8745,
+      "n_games": 10000
+    },
+    "final": {
+      "win_rate": 0.8245,
+      "ci95": [
+        0.8169200517618674,
+        0.8318307241400621
+      ],
+      "wins": 8245,
+      "n_games": 10000
+    }
+  },
+  "exp_9x9_both_s1": {
+    "late": {
+      "n_evals": 40,
+      "late_k": 10,
+      "late_mean": 0.8523,
+      "late_std": 0.029005938089371366,
+      "late_min": 0.8,
+      "late_max": 0.883,
+      "last_eval": 0.8,
+      "max_eval": 0.885,
+      "steps_per_s_median": 8984.95,
+      "wall_s": 2262.8,
+      "board_steps": 20000000
+    },
+    "finished": true,
+    "best": {
+      "win_rate": 0.8584,
+      "ci95": [
+        0.8514289634815273,
+        0.8650957763744096
+      ],
+      "wins": 8584,
+      "n_games": 10000
+    },
+    "final": {
+      "win_rate": 0.8221,
+      "ci95": [
+        0.8144811288110453,
+        0.8294714903507775
+      ],
+      "wins": 8221,
+      "n_games": 10000
+    }
+  },
+  "exp_9x9_lr_decay_s0": {
+    "late": {
+      "n_evals": 40,
+      "late_k": 10,
+      "late_mean": 0.8479000000000001,
+      "late_std": 0.03606922356925482,
+      "late_min": 0.785,
+      "late_max": 0.884,
+      "last_eval": 0.882,
+      "max_eval": 0.884,
+      "steps_per_s_median": 9388.2,
+      "wall_s": 2165.4,
+      "board_steps": 20000000
+    },
+    "finished": true,
+    "best": {
+      "win_rate": 0.8737,
+      "ci95": [
+        0.8670452948197758,
+        0.8800676942543415
+      ],
+      "wins": 8737,
+      "n_games": 10000
+    },
+    "final": {
+      "win_rate": 0.8787,
+      "ci95": [
+        0.8721552290720126,
+        0.884953919877327
+      ],
+      "wins": 8787,
+      "n_games": 10000
+    }
+  },
+  "exp_9x9_lr_decay_s1": {
+    "late": {
+      "n_evals": 40,
+      "late_k": 10,
+      "late_mean": 0.8558,
+      "late_std": 0.01937810906954318,
+      "late_min": 0.834,
+      "late_max": 0.88,
+      "last_eval": 0.84,
+      "max_eval": 0.889,
+      "steps_per_s_median": 8946.35,
+      "wall_s": 2267.6,
+      "board_steps": 20000000
+    },
+    "finished": true,
+    "best": {
+      "win_rate": 0.869,
+      "ci95": [
+        0.8622450040357702,
+        0.8754715947556381
+      ],
+      "wins": 8690,
+      "n_games": 10000
+    },
+    "final": {
+      "win_rate": 0.834,
+      "ci95": [
+        0.8265792317492973,
+        0.8411642479155546
+      ],
+      "wins": 8340,
+      "n_games": 10000
+    }
+  },
+  "exp_9x9_polyak_s0": {
+    "late": {
+      "n_evals": 40,
+      "late_k": 10,
+      "late_mean": 0.8295,
+      "late_std": 0.03886515148561753,
+      "late_min": 0.771,
+      "late_max": 0.87,
+      "last_eval": 0.771,
+      "max_eval": 0.87,
+      "steps_per_s_median": 9411.05,
+      "wall_s": 2160.7,
+      "board_steps": 20000000
+    },
+    "finished": true,
+    "best": {
+      "win_rate": 0.8584,
+      "ci95": [
+        0.8514289634815273,
+        0.8650957763744096
+      ],
+      "wins": 8584,
+      "n_games": 10000
+    },
+    "final": {
+      "win_rate": 0.7896,
+      "ci95": [
+        0.7815007322011301,
+        0.7974768477717474
+      ],
+      "wins": 7896,
+      "n_games": 10000
+    }
+  },
+  "exp_9x9_polyak_s1": {
+    "late": {
+      "n_evals": 40,
+      "late_k": 10,
+      "late_mean": 0.8431000000000001,
+      "late_std": 0.031285246789288165,
+      "late_min": 0.791,
+      "late_max": 0.875,
+      "last_eval": 0.859,
+      "max_eval": 0.875,
+      "steps_per_s_median": 8974.2,
+      "wall_s": 2262.2,
+      "board_steps": 20000000
+    },
+    "finished": true,
+    "best": {
+      "win_rate": 0.8649,
+      "ci95": [
+        0.858059820003741,
+        0.8714599276899848
+      ],
+      "wins": 8649,
+      "n_games": 10000
+    },
+    "final": {
+      "win_rate": 0.8584,
+      "ci95": [
+        0.8514289634815273,
+        0.8650957763744096
+      ],
+      "wins": 8584,
+      "n_games": 10000
+    }
+  }
+}
