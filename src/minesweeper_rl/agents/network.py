@@ -28,7 +28,12 @@ class QNetwork(nn.Module):
         return self.head(self.body(x)).flatten(1)
 
 
+def mask_q(q: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    """q with every illegal (mask == False) cell set to -inf. The single place masking happens."""
+    return torch.where(mask, q, torch.full_like(q, float("-inf")))
+
+
 def masked_argmax(q: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     """argmax over cells of q restricted to mask (bool, same shape). Never returns a masked
     cell unless the whole row is masked (then index 0, finite and harmless)."""
-    return torch.where(mask, q, torch.full_like(q, float("-inf"))).argmax(dim=1)
+    return mask_q(q, mask).argmax(dim=1)

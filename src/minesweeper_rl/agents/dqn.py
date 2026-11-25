@@ -17,7 +17,7 @@ import torch
 import torch.nn.functional as F
 
 from minesweeper_rl.agents.base import Agent
-from minesweeper_rl.agents.network import QNetwork, masked_argmax
+from minesweeper_rl.agents.network import QNetwork, mask_q, masked_argmax
 
 
 def make_streams(seed: int) -> tuple[np.random.Generator, np.random.Generator, int]:
@@ -182,3 +182,12 @@ class DQNAgent(Agent):
             x = torch.from_numpy(np.ascontiguousarray(obs, dtype=np.float32))[None].to(dev)
             m = torch.from_numpy(np.asarray(mask, bool))[None].to(dev)
             return int(masked_argmax(self.net(x), m)[0])
+
+    def q_values(self, obs: np.ndarray, mask: np.ndarray) -> np.ndarray:
+        """Masked Q-values as an (H, W) float array; illegal (already revealed) cells are -inf."""
+        dev = next(self.net.parameters()).device
+        h, w = obs.shape[-2:]
+        with torch.no_grad():
+            x = torch.from_numpy(np.ascontiguousarray(obs, dtype=np.float32))[None].to(dev)
+            m = torch.from_numpy(np.asarray(mask, bool))[None].to(dev)
+            return mask_q(self.net(x), m)[0].cpu().numpy().reshape(h, w)

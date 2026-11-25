@@ -77,9 +77,6 @@ banner("3. install (keeping Kaggle's CUDA torch)")
 sh([sys.executable, "-m", "pip", "install", "-q", "gymnasium", "pyyaml", "tensorboard", "matplotlib",
     "pillow", "scipy", "numpy", "pytest"])
 flags = ["--no-deps"]
-if sys.version_info >= (3, 13):  # pyproject says requires-python <3.13
-    print("NOTE: Python >= 3.13 -> installing with --ignore-requires-python (not covered by the project's CI)")
-    flags.append("--ignore-requires-python")
 sh([sys.executable, "-m", "pip", "install", "-q", "-e", ".", *flags], cwd=REPO)
 out = subprocess.check_output([sys.executable, "-c", "import torch;print(torch.__version__, torch.cuda.is_available())"],
                               text=True).strip()
