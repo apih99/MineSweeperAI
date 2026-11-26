@@ -35,14 +35,20 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--checkpoint", default=str(ROOT / "models" / "dqn_9x9_10.pt"))
     ap.add_argument("--out", default=str(ROOT / "docs" / "assets"))
+    ap.add_argument("--finetune", action="store_true",
+                    help="only write the 16x16 GIF of models/dqn_16x16_40_finetune.pt (leaves the other GIFs alone)")
     a = ap.parse_args()
-    agent = DQNAgent(checkpoint=a.checkpoint)
     out = Path(a.out)
-    jobs = [  # name, (h, w, mines), want_win, fps
-        ("win_9x9", (9, 9, 10), True, 2.0),
-        ("loss_9x9", (9, 9, 10), False, 2.0),
-        ("zero_shot_win_16x16", (16, 16, 40), True, 4.0),
-    ]
+    if a.finetune:
+        agent = DQNAgent(checkpoint=str(ROOT / "models" / "dqn_16x16_40_finetune.pt"))
+        jobs = [("finetuned_win_16x16", (16, 16, 40), True, 4.0)]
+    else:
+        agent = DQNAgent(checkpoint=a.checkpoint)
+        jobs = [  # name, (h, w, mines), want_win, fps
+            ("win_9x9", (9, 9, 10), True, 2.0),
+            ("loss_9x9", (9, 9, 10), False, 2.0),
+            ("zero_shot_win_16x16", (16, 16, 40), True, 4.0),
+        ]
     for name, (h, w, m), want_win, fps in jobs:
         seed = first_seed(agent, h, w, m, want_win)
         frames, won, n = play_frames(agent, h, w, m, seed)

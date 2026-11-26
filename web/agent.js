@@ -17,6 +17,17 @@ export function argmax(values) {
   return best;
 }
 
+/** The two shipped models. "large" is the 9x9 model fine-tuned on 16x16 / 40 mines. */
+export const MODELS = {
+  base: { url: "model/dqn_9x9_10.onnx", label: "Model: trained on 9x9" },
+  large: { url: "model/dqn_16x16_40_finetune.onnx", label: "Model: fine-tuned on 16x16" },
+};
+
+/** Which model plays a board: the 16x16 fine-tune when either side is longer than 9, else the 9x9 model. */
+export function modelKeyFor(height, width) {
+  return Math.max(height, width) > 9 ? "large" : "base";
+}
+
 export class Agent {
   /** @param ort the onnxruntime-web namespace  @param session an InferenceSession */
   constructor(ort, session) {

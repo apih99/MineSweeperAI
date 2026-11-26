@@ -1,9 +1,8 @@
 // UI: builds the board once, then only touches cells whose appearance changed.
 import { Board, mulberry32, PRESETS } from "./game.js";
-import { Agent } from "./agent.js";
+import { Agent, MODELS, modelKeyFor } from "./agent.js";
 
 const ORT_VERSION = "1.23.2";
-const MODEL_URL = "model/dqn_9x9_10.onnx";
 const DELAYS = [900, 450, 220, 100, 35, 0]; // ms per move for speed 0..5
 
 const $ = (id) => document.getElementById(id);
@@ -11,14 +10,14 @@ const els = {
   board: $("board"), wrap: $("board-wrap"), status: $("status"), minesLeft: $("mines-left"),
   legend: $("legend"), run: $("btn-run"), step: $("btn-step"), hint: $("btn-hint"), newGame: $("btn-new"),
   speed: $("speed"), autonext: $("autonext"), preset: $("preset"), seed: $("seed"), heat: $("heat"),
-  tally: $("tally"), tallyPlay: $("tally-play"), ctlWatch: $("controls-watch"), ctlPlay: $("controls-play"),
+  modelInfo: $("model-info"), tally: $("tally"), tallyPlay: $("tally-play"), ctlWatch: $("controls-watch"), ctlPlay: $("controls-play"),
   tabs: [...document.querySelectorAll("[data-mode]")],
 };
 
 const state = {
   mode: "watch", preset: "beginner", board: null, seed: 0, gid: 0,
   flags: null, cells: [], cache: [], focus: 0,
-  agent: null, running: false, looping: false, busy: false,
+  agent: null, modelKey: "", running: false, looping: false, busy: false,
   q: null, qKey: "", mark: -1, markKind: "", moves: 0,
   tally: { watch: { games: 0, wins: 0 }, play: { games: 0, wins: 0 } },
 };
@@ -162,7 +161,8 @@ function newGame(seed) {
   state.q = null; state.qKey = ""; state.mark = -1; state.moves = 0; state.busy = false;
   if (!sameShape || state.cells.length !== p.height * p.width) buildGrid();
   else state.cache.fill("");
-  setStatus(state.mode === "watch" ? (state.agent ? (state.running ? "New game." : "Press Play to watch the agent.") : els.status.textContent) : "Your move. Your first click is always safe.");
+  const loading = useModel();
+  if (!loading) setStatus(state.mode === "watch" ? (state.running ? "New game." : "Press Play to watch the agent.") : "Your move. Your first click is always safe.");
   renderAll();
   refreshHeat();
 }
@@ -374,26 +374,56 @@ els.heat.addEventListener("change", () => {
 });
 new ResizeObserver(layoutBoard).observe(els.wrap);
 
-// ---------- start ----------
-async function loadModel() {
+// ---------- models: loaded lazily, one session per model, cached ----------
+const loadedAgents = {};   // key -> Agent
+const loadPromises = {};   // key -> Promise<Agent> (dropped on failure so a later switch retries)
+
+function loadAgent(key) {
+  if (loadPromises[key]) return loadPromises[key];
   const ort = window.ort;
-  if (!ort) throw new Error("onnxruntime-web could not be downloaded from the CDN (check your connection or ad blocker).");
+  if (!ort) return Promise.reject(new Error("onnxruntime-web could not be downloaded from the CDN (check your connection or ad blocker)."));
   ort.env.wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
   ort.env.wasm.numThreads = 1; // no cross-origin isolation on static hosting, so no worker threads
-  return Agent.load(ort, MODEL_URL);
+  const p = Agent.load(ort, MODELS[key].url).then((a) => { loadedAgents[key] = a; return a; });
+  loadPromises[key] = p;
+  p.catch(() => { delete loadPromises[key]; });
+  return p;
 }
 
+/** Point state.agent at the model for the current board, loading it if needed. Returns true while loading. */
+function useModel() {
+  const key = modelKeyFor(state.board.height, state.board.width);
+  state.modelKey = key;
+  if (loadedAgents[key]) {
+    state.agent = loadedAgents[key];
+    els.modelInfo.textContent = MODELS[key].label;
+    return false;
+  }
+  state.agent = null;
+  els.modelInfo.textContent = "";
+  setStatus(`Loading the ${key === "large" ? "16x16 " : ""}model…`);
+  loadAgent(key).then((agent) => {
+    if (state.modelKey !== key) return; // the user switched board size while this was loading
+    state.agent = agent;
+    els.modelInfo.textContent = MODELS[key].label;
+    setStatus(state.mode === "watch" ? "Model ready. Press Play to watch the agent." : "Model ready. Your move.");
+    updateButtons();
+    refreshHeat();
+    if (state.mode === "watch" && !state.looping && (state.running || (!autoStarted && !matchMedia("(prefers-reduced-motion: reduce)").matches))) {
+      state.running = true;
+      runLoop();
+    }
+    autoStarted = true;
+  }).catch((err) => {
+    console.error(err);
+    if (state.modelKey !== key) return;
+    setStatus(`The AI model could not be loaded: ${err.message || err}. You can still play without hints.`, "error");
+    updateButtons();
+  });
+  return true;
+}
+
+// ---------- start ----------
+let autoStarted = false;
 newGame();
-setStatus("Loading the model…");
-loadModel().then((agent) => {
-  state.agent = agent;
-  setStatus(state.mode === "watch" ? "Model ready. Press Play to watch the agent." : "Model ready. Your move.");
-  updateButtons();
-  refreshHeat();
-  if (state.mode === "watch" && !matchMedia("(prefers-reduced-motion: reduce)").matches) toggleRun();
-}).catch((err) => {
-  console.error(err);
-  setStatus(`The AI model could not be loaded: ${err.message || err}. You can still play without hints.`, "error");
-  updateButtons();
-});
 updateTally();

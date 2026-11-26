@@ -31,6 +31,8 @@
         <span id="status" class="status" role="status" aria-live="polite">Loading the model…</span>
       </div>
 
+      <p id="model-info" class="model-info" aria-live="polite"></p>
+
       <div id="board-wrap" class="board-wrap">
         <div id="board" class="board" role="group" aria-label="Minesweeper board"></div>
       </div>
@@ -86,7 +88,8 @@
   <section class="about" aria-labelledby="how">
     <h2 id="how">How it works</h2>
     <p>The agent is a Double-DQN with a fully convolutional network: five 3×3 conv layers that output one Q-value per cell, and the highest value among unopened cells is its move. It saw only 9×9 boards while training, and it reads the board as numbers and unopened squares, never flags.</p>
-    <p>On 9×9 with 10 mines it wins <strong>86.6%</strong> of games, against 68.1% for a hand-written deduction solver. The same weights on a 16×16 board with 40 mines, which it never trained on, win <strong>56.6%</strong> against the solver's 36.7% (10,000 fixed-seed games each). Some positions are real guesses, so no agent wins every game.</p>
+    <p>On 9×9 with 10 mines it wins <strong>86.6%</strong> of games, against 68.1% for a hand-written deduction solver. The same 9×9 weights on a 16×16 board with 40 mines, which they never trained on, win <strong>56.6%</strong> against the solver's 36.7% (10,000 fixed-seed games each). Some positions are real guesses, so no agent wins every game.</p>
+    <p>For boards larger than 9×9 this page loads a second network: the 9×9 model fine-tuned on 16×16 boards with 40 mines. It wins <strong>68.5%</strong> of 16×16 games on 10,000 unseen seeds (a fresh 3,000-game check gave 69.2%; the solver wins 36.1%). That is the best of four training runs, so a typical run would land a few points lower. Smaller boards keep the 9×9 model.</p>
     <p>The network was exported to ONNX and runs here with onnxruntime-web (WebAssembly). The game logic is a JavaScript port of the Python environment, checked against it by tests. Code, training notes and results: <a href="https://github.com/apih99/MineSweeperAI" rel="noopener">github.com/apih99/MineSweeperAI</a>.</p>
     <p class="foot">Seeds are for this page's JavaScript random generator and do not reproduce the Python boards.</p>
   </section>

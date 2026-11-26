@@ -8,6 +8,7 @@
 
 - **9x9 / 10 mines: 86.6% win rate** (95% CI 85.9-87.2%) vs 68.1% for a hand-written deduction solver and ~0% for random clicking.
 - **Zero-shot transfer:** the same weights, never trained on anything bigger, win **56.6%** of 16x16 / 40-mine games (rule solver: 36.7%).
+- **Fine-tuned for 16x16:** continuing training of the 9x9 model on 16x16 boards lifts that to **68.5%** on 10,000 unseen seeds (best of 4 runs, see [Experiments](#experiments)); the web demo uses it for boards larger than 9x9.
 - Trained in **~37 minutes on a free Kaggle T4**. Win rates are over 10,000 fixed-seed games.
 
 ![The agent winning a 9x9 game: board on the left, its Q-value heatmap on the right](docs/assets/win_9x9.gif)
@@ -22,10 +23,13 @@ Win rate over 10,000 games, 95% Wilson CI. Standard seeds are 1,000,000-1,009,99
 |-------|--------|-------------|----------------------|--------------------|
 | 5x5 / 3 mines | 8.82% (8.28-9.39%) | 68.96% (68.05-69.86%) | **79.93%** (79.13-80.70%) | - |
 | 9x9 / 10 mines | 0.00% (0.00-0.04%) | 68.11% (67.19-69.02%) | **86.55%** (85.87-87.20%) | **87.57%** (86.91-88.20%) |
-| 16x16 / 40 mines, **DQN trained on 9x9 only** | 0.00% (0.00-0.04%) | 36.69% (35.75-37.64%) | **56.63%** (55.66-57.60%) | - |
+| 16x16 / 40 mines, **DQN fine-tuned on 16x16** | 0.00% (0.00-0.04%) | 36.09% | - | **68.50%** (67.58-69.40%) |
+| 16x16 / 40 mines, DQN trained on 9x9 only (zero-shot) | 0.00% (0.00-0.04%) | 36.69% (35.75-37.64%) | 56.63% (55.66-57.60%) | 56.70% (unseen seeds, from the experiments) |
 | 5x5 / 3 mines, DQN trained on 9x9 only | - | - | 79.09% (78.28-79.88%) | - |
 
 ![Win rate by board and agent](docs/assets/results_comparison.png)
+
+The fine-tuned 16x16 row is `models/dqn_16x16_40_finetune.pt`, the best checkpoint of the best of 4 fine-tuning/scratch runs (the 2 fine-tune runs reached 65.2% and 68.5%), so 68.5% is an optimistic pick; a typical run lands nearer 63-67%. An independent check on 3,000 fresh seeds (7,000,000 and up) gave **69.2%** (67.5-70.8%), against 57.8% for the 9x9 model on the same games. The rule solver's 36.09% is on the same 10,000 unseen seeds; the other solver and random numbers in the table are on the standard seeds. The chart above predates the fine-tuned model and still shows the zero-shot 16x16 bar.
 
 Two caveats. First, `best.pt` is the checkpoint with the best 1,000-game eval during training, picked from 40 noisy evals on seeds that overlap the standard range, so the unseen-seed column is the fairer estimate. Second, the final checkpoint (`final.pt`, 20M steps) scores 79.50% / 80.05% (standard / unseen): late in training the eval win rate bounces between about 74% and 87% because the learning rate never decays. So the honest 9x9 summary is "about 87% at its best checkpoint, about 80% at the end"; see [what I learned](#what-i-learned).
 
@@ -57,7 +61,11 @@ And the 9x9 network, never trained on a 16x16 board, solving one (the first zero
 
 ![The 9x9 network winning a 16x16 game](docs/assets/zero_shot_win_16x16.gif)
 
-GIF seeds (scanning upward from 5,000,000 and taking the first game with each outcome, so nothing is cherry-picked beyond that): 9x9 win **5000000**, 9x9 loss **5000006**, 16x16 zero-shot win **5000001**.
+And the fine-tuned 16x16 model on the same kind of board (first win on the unseen seeds, seed 5,000,000, 95 moves):
+
+![The fine-tuned model winning a 16x16 game](docs/assets/finetuned_win_16x16.gif)
+
+GIF seeds (scanning upward from 5,000,000 and taking the first game with each outcome, so nothing is cherry-picked beyond that): 9x9 win **5000000**, 9x9 loss **5000006**, 16x16 zero-shot win **5000001**, 16x16 fine-tuned win **5000000** (`python scripts/make_gifs.py --finetune`).
 
 ## What I learned
 
@@ -139,7 +147,7 @@ Reference on the same 10,000 unseen games: 9x9 model zero-shot **56.70%** (55.73
 
 Compute: A (8 runs x 20M steps) took 2.6 h and B (4 runs x 25M steps) 4.4 h of Kaggle session time, two runs in parallel, one per GPU. Per-run speed with two in parallel was about 9.2k board-steps/s on 9x9 (same as the single run in M6) and 3.3k on 16x16, so the second GPU doubled throughput even with only 4 CPU cores. Together with a 15-minute throughput benchmark that is about 7.3 h of session time.
 
-**Candidate model (not promoted).** [models/dqn_16x16_40_finetune.pt](models/dqn_16x16_40_finetune.pt) is the `best.pt` of the fine-tune seed-1 run: **68.50%** (67.58-69.40%) on the 10,000 unseen 16x16 games, versus 56.70% zero-shot. It was chosen as the best of four runs, so expect a typical fine-tuned model nearer 63-67%. The web demo, GIFs and headline numbers above still use `dqn_9x9_10.pt`.
+**Promoted model.** [models/dqn_16x16_40_finetune.pt](models/dqn_16x16_40_finetune.pt) is the `best.pt` of the fine-tune seed-1 run and is now the project's 16x16 model: **68.50%** (67.58-69.40%) on the 10,000 unseen 16x16 games (seeds from 5,000,000), versus 56.70% zero-shot and 36.09% for the rule solver. It was chosen as the best of four runs, so expect a typical fine-tuned model nearer 63-67%. A fresh check on 3,000 seeds from 7,000,000 gave 69.2% (67.5-70.8%), against 57.8% for the 9x9 model. The web demo uses it for boards larger than 9x9. The 9x9 model, its headline numbers and the 9x9 GIFs are unchanged.
 
 ## Reproduce
 
@@ -182,7 +190,7 @@ More detail (batched-env benchmark, config keys, checkpoint formats, Kaggle work
 
 ## Web demo
 
-The trained network is exported to ONNX and runs entirely in the browser with [onnxruntime-web](https://onnxruntime.ai/) (WebAssembly); there is no server. `web/` is a static site (vanilla JS modules, no build step): `game.js` is a port of the Python environment, `agent.js` runs the model and applies the action mask, `app.js` is the UI. You can watch the agent play, play yourself (long-press or right-click to flag; the Hint button shows the agent's choice) and overlay its Q-value heatmap. The ONNX model has dynamic height/width, so one file serves 5x5, 9x9 and 16x16; its output is raw Q-values of shape `(1, H*W)` and masking is done in JS.
+The trained network is exported to ONNX and runs entirely in the browser with [onnxruntime-web](https://onnxruntime.ai/) (WebAssembly); there is no server. `web/` is a static site (vanilla JS modules, no build step): `game.js` is a port of the Python environment, `agent.js` runs the model and applies the action mask, `app.js` is the UI. You can watch the agent play, play yourself (long-press or right-click to flag; the Hint button shows the agent's choice) and overlay its Q-value heatmap. The ONNX model has dynamic height/width, so one file serves any board size; its output is raw Q-values of shape `(1, H*W)` and masking is done in JS. Two models ship: `dqn_9x9_10.onnx` for boards up to 9x9, and `dqn_16x16_40_finetune.onnx` (602 KiB) when either side is longer than 9. The 16x16 one is fetched lazily the first time it is needed and the session is cached; the page shows which model is active.
 
 ```powershell
 pip install -e ".[dev,web]"
@@ -205,8 +213,8 @@ src/minesweeper_rl/
 tests/              rules, env equivalence, masking, resume, evaluation, rendering
 scripts/            export_onnx.py, make_figures.py, make_gifs.py, kaggle_run.py, eval_run.py, experiments_collect.py, experiments_table.py, bench_env.py
 kaggle/             kernel that trains on Kaggle
-models/             dqn_9x9_10.pt (trained weights), dqn_16x16_40_finetune.pt (candidate, not promoted)
-web/                static in-browser demo (ONNX model, JS game, UI, JS tests)
+models/             dqn_9x9_10.pt (trained weights), dqn_16x16_40_finetune.pt (16x16 model, fine-tuned from the 9x9 one)
+web/                static in-browser demo (ONNX models, JS game, UI, JS tests)
 results/            baselines/, dqn/ and experiments/ JSON + learning-curve CSVs (the source of every number here)
 docs/               assets/ (README images), NOTES.md
 ```

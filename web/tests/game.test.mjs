@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { Board, mulberry32, GameOverError, PRESETS } from "../game.js";
-import { maskQ, argmax } from "../agent.js";
+import { maskQ, argmax, modelKeyFor, MODELS } from "../agent.js";
 
 const fixtures = JSON.parse(readFileSync(new URL("./fixtures.json", import.meta.url))).boards;
 
@@ -107,4 +107,13 @@ test("masked argmax never returns a revealed cell", () => {
     }
   }
   assert.equal(argmax(maskQ(Float32Array.of(1, 2), Uint8Array.of(0, 0))), -1);
+});
+
+test("model selection: 9x9-trained model up to 9x9, 16x16 fine-tune for larger boards", () => {
+  assert.equal(modelKeyFor(5, 5), "base");
+  assert.equal(modelKeyFor(9, 9), "base");
+  assert.equal(modelKeyFor(16, 16), "large");
+  assert.equal(modelKeyFor(9, 16), "large");
+  assert.equal(modelKeyFor(16, 9), "large");
+  for (const p of Object.values(PRESETS)) assert.ok(MODELS[modelKeyFor(p.height, p.width)].url.endsWith(".onnx"));
 });
