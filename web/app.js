@@ -162,6 +162,8 @@ function newGame(seed) {
   if (!sameShape || state.cells.length !== p.height * p.width) buildGrid();
   else state.cache.fill("");
   const loading = useModel();
+  // The play loop exits while a model is loading; restart it if the model for this board is already here.
+  if (!loading && state.mode === "watch" && state.running) runLoop();
   if (!loading) setStatus(state.mode === "watch" ? (state.running ? "New game." : "Press Play to watch the agent.") : "Your move. Your first click is always safe.");
   renderAll();
   refreshHeat();
