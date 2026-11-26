@@ -90,8 +90,8 @@ def results_comparison() -> None:
     groups = [
         ("5x5 / 3 mines", "baselines/random_5x5_3.json", "baselines/rule_5x5_3.json", "dqn/dqn_5x5_3.json"),
         ("9x9 / 10 mines", "baselines/random_9x9_10.json", "baselines/rule_9x9_10.json", "dqn/dqn_9x9_10.json"),
-        ("16x16 / 40 mines\n(DQN trained on 9x9 only)", "baselines/random_16x16_40.json",
-         "baselines/rule_16x16_40.json", "dqn/dqn_9x9_10_on_16x16_40.json"),
+        ("16x16 / 40 mines\n(DQN fine-tuned from the 9x9 model)", "baselines/random_16x16_40.json",
+         "baselines/rule_16x16_40.json", "dqn/dqn_16x16_40_finetune.json"),
     ]
     series = [("random", C_RANDOM, "#5f5f5f"), ("rule solver", C_RULE, C_RULE), ("DQN", C_DQN, C_DQN_TEXT)]
     fig, ax = plt.subplots(figsize=(10, 4.8))

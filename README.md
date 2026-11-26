@@ -23,13 +23,13 @@ Win rate over 10,000 games, 95% Wilson CI. Standard seeds are 1,000,000-1,009,99
 |-------|--------|-------------|----------------------|--------------------|
 | 5x5 / 3 mines | 8.82% (8.28-9.39%) | 68.96% (68.05-69.86%) | **79.93%** (79.13-80.70%) | - |
 | 9x9 / 10 mines | 0.00% (0.00-0.04%) | 68.11% (67.19-69.02%) | **86.55%** (85.87-87.20%) | **87.57%** (86.91-88.20%) |
-| 16x16 / 40 mines, **DQN fine-tuned on 16x16** | 0.00% (0.00-0.04%) | 36.09% | - | **68.50%** (67.58-69.40%) |
+| 16x16 / 40 mines, **DQN fine-tuned on 16x16** | 0.00% (0.00-0.04%) | 36.69% (35.75-37.64%) | **68.97%** (68.06-69.87%) | **68.50%** (67.58-69.40%) |
 | 16x16 / 40 mines, DQN trained on 9x9 only (zero-shot) | 0.00% (0.00-0.04%) | 36.69% (35.75-37.64%) | 56.63% (55.66-57.60%) | 56.70% (unseen seeds, from the experiments) |
 | 5x5 / 3 mines, DQN trained on 9x9 only | - | - | 79.09% (78.28-79.88%) | - |
 
 ![Win rate by board and agent](docs/assets/results_comparison.png)
 
-The fine-tuned 16x16 row is `models/dqn_16x16_40_finetune.pt`, the best checkpoint of the best of 4 fine-tuning/scratch runs (the 2 fine-tune runs reached 65.2% and 68.5%), so 68.5% is an optimistic pick; a typical run lands nearer 63-67%. An independent check on 3,000 fresh seeds (7,000,000 and up) gave **69.2%** (67.5-70.8%), against 57.8% for the 9x9 model on the same games. The rule solver's 36.09% is on the same 10,000 unseen seeds; the other solver and random numbers in the table are on the standard seeds. The chart above predates the fine-tuned model and still shows the zero-shot 16x16 bar.
+The fine-tuned 16x16 row is `models/dqn_16x16_40_finetune.pt`, the best checkpoint of the best of 4 fine-tuning/scratch runs (the 2 fine-tune runs reached 65.2% and 68.5%), so 68.5% is an optimistic pick; a typical run lands nearer 63-67%. An independent check on 3,000 fresh seeds (7,000,000 and up) gave **69.2%** (67.5-70.8%), against 57.8% for the 9x9 model on the same games. On the unseen seeds the rule solver wins 36.09%; the solver and random columns in the table are on the standard seeds. The chart shows the fine-tuned model for 16x16; the zero-shot row is in the table only.
 
 Two caveats. First, `best.pt` is the checkpoint with the best 1,000-game eval during training, picked from 40 noisy evals on seeds that overlap the standard range, so the unseen-seed column is the fairer estimate. Second, the final checkpoint (`final.pt`, 20M steps) scores 79.50% / 80.05% (standard / unseen): late in training the eval win rate bounces between about 74% and 87% because the learning rate never decays. So the honest 9x9 summary is "about 87% at its best checkpoint, about 80% at the end"; see [what I learned](#what-i-learned).
 
